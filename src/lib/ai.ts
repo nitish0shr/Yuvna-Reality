@@ -229,7 +229,7 @@ function detectIntentSignals(message: string): string[] {
 }
 
 // Fallback recommendations if AI fails
-function getFallbackRecommendations(profile: any): any[] {
+function getFallbackRecommendations(_profile: any): any[] {
   return [
     {
       id: '1',

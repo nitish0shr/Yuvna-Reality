@@ -11,8 +11,7 @@ import {
   Target,
   ArrowUpRight,
   Send,
-  Zap,
-  Users
+  Zap
 } from 'lucide-react';
 import { YuvnaHeader } from './YuvnaHeader';
 

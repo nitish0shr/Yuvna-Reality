@@ -11,9 +11,7 @@ import {
   Phone,
   Mail,
   ArrowRight,
-  Play,
-  Zap,
-  Send
+  Play
 } from 'lucide-react';
 
 import { YuvnaLogoCompact } from './YuvnaLogo';
@@ -78,31 +76,24 @@ export function JuvnaLanding() {
             <YuvnaLogoCompact />
             
             <div className="hidden md:flex items-center gap-8">
-              <a href="#services" className="text-[14px] font-medium text-[#3D2D22] hover:text-[#E07F26] transition-colors">
+              <button onClick={() => setView('services')} className="text-[14px] font-medium text-[#3D2D22] hover:text-[#E07F26] transition-colors">
                 Services
-              </a>
-              <a href="#about" className="text-[14px] font-medium text-[#3D2D22] hover:text-[#E07F26] transition-colors">
+              </button>
+              <button onClick={() => setView('about')} className="text-[14px] font-medium text-[#3D2D22] hover:text-[#E07F26] transition-colors">
                 About Us
-              </a>
-              <a href="#properties" className="text-[14px] font-medium text-[#3D2D22] hover:text-[#E07F26] transition-colors">
+              </button>
+              <button onClick={() => setView('properties')} className="text-[14px] font-medium text-[#3D2D22] hover:text-[#E07F26] transition-colors">
                 Properties
-              </a>
-              <a href="#contact" className="text-[14px] font-medium text-[#3D2D22] hover:text-[#E07F26] transition-colors">
+              </button>
+              <button onClick={() => setView('contact')} className="text-[14px] font-medium text-[#3D2D22] hover:text-[#E07F26] transition-colors">
                 Contact
-              </a>
+              </button>
             </div>
 
             <div className="flex items-center gap-4">
               <button 
-                onClick={() => setView('agent-outreach')}
-                className="hidden md:flex items-center gap-1.5 text-[14px] font-medium text-[#E07F26] hover:text-[#c96e1f] transition-colors"
-              >
-                <Zap className="w-4 h-4" />
-                Outreach Engine
-              </button>
-              <button 
                 onClick={() => setView('agent-inbox')}
-                className="text-[14px] font-medium text-[#3D2D22] hover:text-[#E07F26] transition-colors"
+                className="text-[14px] font-medium text-[#7a6a5f] hover:text-[#E07F26] transition-colors"
               >
                 Agent Portal
               </button>
@@ -246,7 +237,7 @@ export function JuvnaLanding() {
       </section>
 
       {/* Services Section */}
-      <section id="services" className="py-24">
+      <section className="py-24">
         <div className="max-w-7xl mx-auto px-6">
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -269,7 +260,8 @@ export function JuvnaLanding() {
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
                 transition={{ delay: index * 0.1 }}
-                className="group bg-white border border-[#E8E4E0] rounded-xl p-8 hover:shadow-xl hover:border-[#E07F26]/30 transition-all"
+                className="group bg-white border border-[#E8E4E0] rounded-xl p-8 hover:shadow-xl hover:border-[#E07F26]/30 transition-all cursor-pointer"
+                onClick={() => setView('services')}
               >
                 <div className="w-14 h-14 rounded-xl bg-[#E07F26]/10 flex items-center justify-center mb-6 group-hover:bg-[#E07F26] transition-colors">
                   <service.icon className="w-7 h-7 text-[#E07F26] group-hover:text-white transition-colors" />
@@ -279,89 +271,79 @@ export function JuvnaLanding() {
               </motion.div>
             ))}
           </div>
+
+          <div className="text-center mt-12">
+            <button
+              onClick={() => setView('services')}
+              className="px-8 py-4 border-2 border-[#3D2D22] text-[#3D2D22] font-semibold uppercase tracking-wider text-[13px] rounded hover:bg-[#3D2D22] hover:text-white transition-all inline-flex items-center gap-3"
+            >
+              View All Services
+              <ArrowRight className="w-4 h-4" />
+            </button>
+          </div>
         </div>
       </section>
 
-      {/* Outreach Engine Feature */}
-      <section className="py-24 bg-gradient-to-r from-[#E07F26] to-[#c96e1f] relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10" style={{
-          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
-        }} />
-        
-        <div className="max-w-7xl mx-auto px-6 relative z-10">
-          <div className="grid lg:grid-cols-2 gap-12 items-center">
-            <motion.div
-              initial={{ opacity: 0, x: -30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-            >
-              <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/20 rounded-full text-white text-sm font-medium mb-6">
-                <Zap className="w-4 h-4" />
-                NEW: Outreach Engine
-              </div>
-              <h2 className="text-4xl lg:text-5xl font-serif font-bold text-white mb-6">
-                Auto-Generate Leads on Autopilot
-              </h2>
-              <p className="text-xl text-white/90 mb-8 leading-relaxed">
-                Set a threshold, and let our system automatically generate leads when your pipeline drops. 
-                Upload CSV lists, create email sequences, and track multi-channel outreach.
-              </p>
-              <ul className="space-y-4 mb-8">
-                {[
-                  'Auto-pilot mode with smart thresholds',
-                  'Upload CSV/Excel lead lists',
-                  'Multi-step email sequences',
-                  'LinkedIn, Instagram, WhatsApp tracking',
-                  'Real-time notifications'
-                ].map((feature) => (
-                  <li key={feature} className="flex items-center gap-3 text-white">
-                    <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
-                      <ChevronRight className="w-4 h-4" />
-                    </div>
-                    {feature}
-                  </li>
-                ))}
-              </ul>
-              <button
-                onClick={() => setView('agent-outreach')}
-                className="px-8 py-4 bg-white text-[#E07F26] font-semibold uppercase tracking-wider text-[14px] rounded hover:bg-white/90 transition-all inline-flex items-center gap-3 shadow-lg"
+      {/* Featured Properties Preview */}
+      <section className="py-24 bg-[#F9F7F5]">
+        <div className="max-w-7xl mx-auto px-6">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="text-center mb-16"
+          >
+            <div className="w-16 h-1 bg-[#E07F26] mx-auto mb-6" />
+            <h2 className="text-4xl font-serif font-bold text-[#3D2D22] mb-4">Featured Properties</h2>
+            <p className="text-lg text-[#5a4a3f] max-w-2xl mx-auto">
+              Explore our curated selection of premium Dubai properties
+            </p>
+          </motion.div>
+
+          <div className="grid md:grid-cols-3 gap-8">
+            {[
+              { title: 'Downtown Residences', location: 'Downtown Dubai', price: 'From AED 1.2M', yield: '6.5%', image: 'https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?w=600&h=400&fit=crop' },
+              { title: 'Marina Heights', location: 'Dubai Marina', price: 'From AED 2.5M', yield: '5.8%', image: 'https://images.unsplash.com/photo-1512917774080-9991f1c4c750?w=600&h=400&fit=crop' },
+              { title: 'JVC Investment', location: 'Jumeirah Village', price: 'From AED 450K', yield: '8.5%', image: 'https://images.unsplash.com/photo-1502672260266-1c1ef2d93688?w=600&h=400&fit=crop' },
+            ].map((property, index) => (
+              <motion.div
+                key={property.title}
+                initial={{ opacity: 0, y: 20 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: index * 0.1 }}
+                className="bg-white rounded-xl overflow-hidden shadow-lg hover:shadow-xl transition-all cursor-pointer group"
+                onClick={() => setView('properties')}
               >
-                <Send className="w-5 h-5" />
-                Open Outreach Engine
-              </button>
-            </motion.div>
-            
-            <motion.div
-              initial={{ opacity: 0, x: 30 }}
-              whileInView={{ opacity: 1, x: 0 }}
-              viewport={{ once: true }}
-              className="hidden lg:block"
+                <div className="relative h-56 overflow-hidden">
+                  <img src={property.image} alt={property.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-500" />
+                  <div className="absolute top-4 right-4 px-3 py-1 bg-green-100 text-green-700 text-xs font-semibold rounded-full">
+                    {property.yield} yield
+                  </div>
+                </div>
+                <div className="p-6">
+                  <h3 className="text-xl font-serif font-semibold text-[#3D2D22] mb-2">{property.title}</h3>
+                  <div className="flex items-center gap-2 text-[#7a6a5f] text-sm mb-4">
+                    <MapPin className="w-4 h-4" />
+                    {property.location}
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[#E07F26] font-semibold">{property.price}</span>
+                    <span className="text-[#7a6a5f] text-sm group-hover:text-[#E07F26] transition-colors">View Details →</span>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+
+          <div className="text-center mt-12">
+            <button
+              onClick={() => setView('properties')}
+              className="px-8 py-4 bg-[#E07F26] text-white font-semibold uppercase tracking-wider text-[13px] rounded hover:bg-[#c96e1f] transition-all inline-flex items-center gap-3"
             >
-              <div className="bg-white/10 backdrop-blur rounded-2xl p-8 border border-white/20">
-                <div className="text-center mb-6">
-                  <div className="text-6xl font-serif font-bold text-white mb-2">23/50</div>
-                  <div className="text-white/70">Pipeline Health</div>
-                </div>
-                <div className="h-4 bg-white/20 rounded-full overflow-hidden mb-6">
-                  <div className="h-full w-[46%] bg-white rounded-full" />
-                </div>
-                <div className="flex items-center justify-between p-4 bg-white/10 rounded-xl mb-4">
-                  <div className="flex items-center gap-3">
-                    <Zap className="w-6 h-6 text-white" />
-                    <div>
-                      <div className="text-white font-semibold">Auto-Pilot</div>
-                      <div className="text-white/60 text-sm">100 emails/day</div>
-                    </div>
-                  </div>
-                  <div className="w-12 h-6 bg-white rounded-full relative">
-                    <div className="absolute right-1 top-1 w-4 h-4 bg-[#E07F26] rounded-full" />
-                  </div>
-                </div>
-                <div className="text-center text-white/70 text-sm">
-                  ⚠️ Below threshold - Auto-generating leads...
-                </div>
-              </div>
-            </motion.div>
+              View All Properties
+              <ArrowRight className="w-4 h-4" />
+            </button>
           </div>
         </div>
       </section>
@@ -437,7 +419,7 @@ export function JuvnaLanding() {
       </section>
 
       {/* Footer */}
-      <footer id="contact" className="bg-[#3D2D22] text-white py-16">
+      <footer className="bg-[#3D2D22] text-white py-16">
         <div className="max-w-7xl mx-auto px-6">
           <div className="grid md:grid-cols-4 gap-12 mb-12">
             {/* Brand */}
@@ -465,10 +447,10 @@ export function JuvnaLanding() {
             <div>
               <h4 className="font-semibold mb-4 text-[#E07F26]">Quick Links</h4>
               <ul className="space-y-3 text-white/70 text-sm">
-                <li><a href="#" className="hover:text-[#E07F26] transition-colors">About Us</a></li>
-                <li><a href="#" className="hover:text-[#E07F26] transition-colors">Properties</a></li>
-                <li><a href="#" className="hover:text-[#E07F26] transition-colors">Services</a></li>
-                <li><a href="#" className="hover:text-[#E07F26] transition-colors">Contact</a></li>
+                <li><button onClick={() => setView('about')} className="hover:text-[#E07F26] transition-colors">About Us</button></li>
+                <li><button onClick={() => setView('properties')} className="hover:text-[#E07F26] transition-colors">Properties</button></li>
+                <li><button onClick={() => setView('services')} className="hover:text-[#E07F26] transition-colors">Services</button></li>
+                <li><button onClick={() => setView('contact')} className="hover:text-[#E07F26] transition-colors">Contact</button></li>
               </ul>
             </div>
 
@@ -515,4 +497,3 @@ export function JuvnaLanding() {
     </div>
   );
 }
-

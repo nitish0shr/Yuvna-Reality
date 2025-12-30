@@ -10,21 +10,12 @@ import {
   Pause,
   Settings,
   Bell,
-  TrendingUp,
-  Users,
-  Calendar,
-  CheckCircle,
-  AlertTriangle,
   Zap,
   FileSpreadsheet,
   Send,
-  Clock,
-  Target,
   BarChart3,
-  RefreshCw,
   X,
-  Plus,
-  ChevronRight
+  Plus
 } from 'lucide-react';
 import { YuvnaHeader } from './YuvnaHeader';
 
@@ -113,7 +104,7 @@ const mockActivities: OutreachActivity[] = [
 
 export function JuvnaOutreach() {
   const [leads, setLeads] = useState<Lead[]>(mockLeads);
-  const [campaigns, setCampaigns] = useState<Campaign[]>(mockCampaigns);
+  const [campaigns, _setCampaigns] = useState<Campaign[]>(mockCampaigns);
   const [activities, setActivities] = useState<OutreachActivity[]>(mockActivities);
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showCampaignModal, setShowCampaignModal] = useState(false);

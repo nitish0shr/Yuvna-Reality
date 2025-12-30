@@ -1,5 +1,9 @@
 import { useRealEstateStore } from '../../store/realEstateStore';
 import { JuvnaLanding } from './JuvnaLanding';
+import { JuvnaAbout } from './JuvnaAbout';
+import { JuvnaServices } from './JuvnaServices';
+import { JuvnaProperties } from './JuvnaProperties';
+import { JuvnaContact } from './JuvnaContact';
 import { JuvnaOnboarding } from './JuvnaOnboarding';
 import { JuvnaDashboard } from './JuvnaDashboard';
 import { JuvnaRecommendations } from './JuvnaRecommendations';
@@ -17,8 +21,18 @@ export function JuvnaApp() {
 
   const renderView = () => {
     switch (currentView) {
+      // Public Pages
       case 'landing':
         return <JuvnaLanding key="landing" />;
+      case 'about':
+        return <JuvnaAbout key="about" />;
+      case 'services':
+        return <JuvnaServices key="services" />;
+      case 'properties':
+        return <JuvnaProperties key="properties" />;
+      case 'contact':
+        return <JuvnaContact key="contact" />;
+      // Buyer Flow
       case 'onboarding':
         return <JuvnaOnboarding key="onboarding" />;
       case 'dashboard':
@@ -29,6 +43,7 @@ export function JuvnaApp() {
         return <JuvnaROI key="roi" />;
       case 'chat':
         return <JuvnaChat key="chat" />;
+      // Agent Portal (Outreach is ONLY here)
       case 'agent-inbox':
         return <JuvnaAgentInbox key="inbox" />;
       case 'agent-pipeline':

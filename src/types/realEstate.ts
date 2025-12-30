@@ -433,15 +433,20 @@ export interface Partner {
 // ==================== APP STATE ====================
 
 export interface AppView {
-  // Buyer-facing views
+  // Public pages
   currentView: 
     | 'landing'
+    | 'about'
+    | 'services'
+    | 'properties'
+    | 'contact'
+    // Buyer-facing views
     | 'onboarding'
     | 'dashboard'
     | 'recommendations'
     | 'roi-simulator'
     | 'chat'
-    // Agent-facing views
+    // Agent-facing views (Outreach is agent-only)
     | 'agent-inbox'
     | 'agent-outreach'
     | 'agent-pipeline'

@@ -84,7 +84,7 @@ export async function getSession() {
 
 // Listen for auth changes
 export function onAuthStateChange(callback: (user: AuthUser | null) => void) {
-  return supabase.auth.onAuthStateChange((event, session) => {
+  return supabase.auth.onAuthStateChange((_event, session) => {
     if (session?.user) {
       callback({
         id: session.user.id,
@@ -126,18 +126,28 @@ export async function getOrCreateBuyerProfile(authUser: AuthUser): Promise<Buyer
       email: buyer.email,
       phone: buyer.phone || undefined,
       country: buyer.country,
-      language: buyer.language as any,
-      currency: buyer.currency,
+      language: buyer.language || 'en',
+      currency: buyer.currency || 'USD',
+      timezone: 'UTC',
       persona: buyer.persona as any || null,
-      goal: buyer.goal as any || undefined,
-      budgetBand: buyer.budget_band as any || undefined,
-      urgencyScore: buyer.urgency_score,
-      leadScore: buyer.lead_score as any,
+      personaConfidence: 0,
+      goal: buyer.goal as any || 'exploring',
+      budgetBand: buyer.budget_band as any || 'under-500k',
+      urgencyScore: buyer.urgency_score || 0,
+      leadScore: buyer.lead_score as any || 'cold',
+      engagementScore: 0,
+      riskTolerance: 'moderate' as const,
+      investmentHorizon: '3-5-years' as const,
+      source: 'website' as const,
+      consentMarketing: false,
+      consentWhatsApp: false,
+      consentEmail: false,
+      optOutChannels: [],
       onboardingCompletedAt: buyer.onboarding_completed_at ? new Date(buyer.onboarding_completed_at) : undefined,
-      lastActiveAt: buyer.last_active_at ? new Date(buyer.last_active_at) : undefined,
+      lastActiveAt: buyer.last_active_at ? new Date(buyer.last_active_at) : new Date(),
       createdAt: new Date(buyer.created_at),
       updatedAt: new Date(buyer.updated_at),
-    };
+    } as BuyerProfile;
   } catch (error) {
     console.error('Error getting/creating buyer profile:', error);
     return null;
