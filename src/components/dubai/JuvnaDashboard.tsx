@@ -9,7 +9,10 @@ import {
   BarChart3,
   User,
   Target,
-  ArrowUpRight
+  ArrowUpRight,
+  Send,
+  Zap,
+  Users
 } from 'lucide-react';
 import { YuvnaHeader } from './YuvnaHeader';
 
@@ -185,11 +188,47 @@ export function JuvnaDashboard() {
           </div>
         </motion.div>
 
-        {/* Recommendations CTA */}
+        {/* Outreach Engine CTA */}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
+          className="mb-10"
+        >
+          <div className="bg-gradient-to-r from-[#E07F26] to-[#c96e1f] rounded-2xl p-6 relative overflow-hidden">
+            <div className="absolute inset-0 opacity-10" style={{
+              backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+            }} />
+            <div className="relative z-10 flex items-center justify-between">
+              <div className="flex items-center gap-4">
+                <div className="w-14 h-14 rounded-xl bg-white/20 flex items-center justify-center">
+                  <Zap className="w-7 h-7 text-white" />
+                </div>
+                <div>
+                  <h3 className="text-xl font-serif font-semibold text-white mb-1">
+                    🚀 Outreach Engine
+                  </h3>
+                  <p className="text-white/80 text-sm">
+                    Auto-generate leads when your pipeline drops • Upload CSV • Email sequences • Multi-channel tracking
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setView('agent-outreach')}
+                className="px-6 py-3 bg-white text-[#E07F26] font-semibold rounded-lg hover:bg-white/90 transition-all flex items-center gap-2 whitespace-nowrap"
+              >
+                <Send className="w-5 h-5" />
+                Open Outreach
+              </button>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Recommendations CTA */}
+        <motion.div
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.5 }}
         >
           <div className="bg-[#3D2D22] rounded-2xl p-8 text-center relative overflow-hidden">
             <div className="absolute inset-0 opacity-10" style={{

@@ -11,7 +11,9 @@ import {
   Phone,
   Mail,
   ArrowRight,
-  Play
+  Play,
+  Zap,
+  Send
 } from 'lucide-react';
 
 import { YuvnaLogoCompact } from './YuvnaLogo';
@@ -91,6 +93,13 @@ export function JuvnaLanding() {
             </div>
 
             <div className="flex items-center gap-4">
+              <button 
+                onClick={() => setView('agent-outreach')}
+                className="hidden md:flex items-center gap-1.5 text-[14px] font-medium text-[#E07F26] hover:text-[#c96e1f] transition-colors"
+              >
+                <Zap className="w-4 h-4" />
+                Outreach Engine
+              </button>
               <button 
                 onClick={() => setView('agent-inbox')}
                 className="text-[14px] font-medium text-[#3D2D22] hover:text-[#E07F26] transition-colors"
@@ -269,6 +278,90 @@ export function JuvnaLanding() {
                 <p className="text-[#5a4a3f] text-sm leading-relaxed">{service.description}</p>
               </motion.div>
             ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Outreach Engine Feature */}
+      <section className="py-24 bg-gradient-to-r from-[#E07F26] to-[#c96e1f] relative overflow-hidden">
+        <div className="absolute inset-0 opacity-10" style={{
+          backgroundImage: `url("data:image/svg+xml,%3Csvg width='60' height='60' viewBox='0 0 60 60' xmlns='http://www.w3.org/2000/svg'%3E%3Cg fill='none' fill-rule='evenodd'%3E%3Cg fill='%23ffffff' fill-opacity='1'%3E%3Cpath d='M36 34v-4h-2v4h-4v2h4v4h2v-4h4v-2h-4zm0-30V0h-2v4h-4v2h4v4h2V6h4V4h-4zM6 34v-4H4v4H0v2h4v4h2v-4h4v-2H6zM6 4V0H4v4H0v2h4v4h2V6h4V4H6z'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E")`,
+        }} />
+        
+        <div className="max-w-7xl mx-auto px-6 relative z-10">
+          <div className="grid lg:grid-cols-2 gap-12 items-center">
+            <motion.div
+              initial={{ opacity: 0, x: -30 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+            >
+              <div className="inline-flex items-center gap-2 px-4 py-2 bg-white/20 rounded-full text-white text-sm font-medium mb-6">
+                <Zap className="w-4 h-4" />
+                NEW: Outreach Engine
+              </div>
+              <h2 className="text-4xl lg:text-5xl font-serif font-bold text-white mb-6">
+                Auto-Generate Leads on Autopilot
+              </h2>
+              <p className="text-xl text-white/90 mb-8 leading-relaxed">
+                Set a threshold, and let our system automatically generate leads when your pipeline drops. 
+                Upload CSV lists, create email sequences, and track multi-channel outreach.
+              </p>
+              <ul className="space-y-4 mb-8">
+                {[
+                  'Auto-pilot mode with smart thresholds',
+                  'Upload CSV/Excel lead lists',
+                  'Multi-step email sequences',
+                  'LinkedIn, Instagram, WhatsApp tracking',
+                  'Real-time notifications'
+                ].map((feature) => (
+                  <li key={feature} className="flex items-center gap-3 text-white">
+                    <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center">
+                      <ChevronRight className="w-4 h-4" />
+                    </div>
+                    {feature}
+                  </li>
+                ))}
+              </ul>
+              <button
+                onClick={() => setView('agent-outreach')}
+                className="px-8 py-4 bg-white text-[#E07F26] font-semibold uppercase tracking-wider text-[14px] rounded hover:bg-white/90 transition-all inline-flex items-center gap-3 shadow-lg"
+              >
+                <Send className="w-5 h-5" />
+                Open Outreach Engine
+              </button>
+            </motion.div>
+            
+            <motion.div
+              initial={{ opacity: 0, x: 30 }}
+              whileInView={{ opacity: 1, x: 0 }}
+              viewport={{ once: true }}
+              className="hidden lg:block"
+            >
+              <div className="bg-white/10 backdrop-blur rounded-2xl p-8 border border-white/20">
+                <div className="text-center mb-6">
+                  <div className="text-6xl font-serif font-bold text-white mb-2">23/50</div>
+                  <div className="text-white/70">Pipeline Health</div>
+                </div>
+                <div className="h-4 bg-white/20 rounded-full overflow-hidden mb-6">
+                  <div className="h-full w-[46%] bg-white rounded-full" />
+                </div>
+                <div className="flex items-center justify-between p-4 bg-white/10 rounded-xl mb-4">
+                  <div className="flex items-center gap-3">
+                    <Zap className="w-6 h-6 text-white" />
+                    <div>
+                      <div className="text-white font-semibold">Auto-Pilot</div>
+                      <div className="text-white/60 text-sm">100 emails/day</div>
+                    </div>
+                  </div>
+                  <div className="w-12 h-6 bg-white rounded-full relative">
+                    <div className="absolute right-1 top-1 w-4 h-4 bg-[#E07F26] rounded-full" />
+                  </div>
+                </div>
+                <div className="text-center text-white/70 text-sm">
+                  ⚠️ Below threshold - Auto-generating leads...
+                </div>
+              </div>
+            </motion.div>
           </div>
         </div>
       </section>
