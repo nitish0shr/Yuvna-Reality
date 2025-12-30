@@ -1,0 +1,49 @@
+John Doe
+Senior Software Engineer
+
+Email: john.doe@example.com
+Phone: (555) 123-4567
+Location: Seattle, WA
+
+SUMMARY
+Experienced software engineer with 8+ years building scalable web applications. Strong expertise in React, Node.js, TypeScript, and cloud infrastructure.
+
+EXPERIENCE
+
+Acme Technologies - Senior Software Engineer
+January 2021 - Present (3+ years)
+- Led development of customer-facing dashboard serving 500k+ users
+- Architected microservices infrastructure reducing latency by 40%
+- Mentored team of 5 junior engineers
+- Technologies: React, TypeScript, Node.js, PostgreSQL, AWS
+
+StartupXYZ Inc - Software Engineer
+June 2018 - December 2020 (2.5 years)
+- Built real-time collaboration features using WebSockets
+- Implemented CI/CD pipeline reducing deployment time by 60%
+- Technologies: Vue.js, Python, Django, Redis, Docker
+
+TechCorp Solutions - Junior Developer
+March 2016 - May 2018 (2 years)
+- Developed RESTful APIs for mobile applications
+- Maintained legacy PHP codebase and led migration to Node.js
+- Technologies: PHP, Node.js, MySQL, MongoDB
+
+EDUCATION
+
+University of Washington - Bachelor of Science in Computer Science
+Graduated: 2015
+
+SKILLS
+- Languages: JavaScript, TypeScript, Python, PHP
+- Frontend: React, Vue.js, HTML/CSS
+- Backend: Node.js, Django, Express
+- Databases: PostgreSQL, MySQL, MongoDB, Redis
+- Cloud: AWS (EC2, S3, Lambda, RDS), Docker, Kubernetes
+- Tools: Git, GitHub Actions, Jenkins, Jira
+
+CERTIFICATIONS
+- AWS Certified Solutions Architect (2022)
+- Google Cloud Professional Developer (2021)
+
+Authorization: Authorized to work in the United States without sponsorship

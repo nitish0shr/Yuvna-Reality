@@ -187,6 +187,233 @@ export function HMBot({
 }
 
 // ========================================
+// CHARACTER DESIGN: C-Bot (Candidate)
+// Approachable, professional, eager
+// ========================================
+export function CBot({
+  action = 'idle',
+  size = 'medium',
+  candidateName = 'A'
+}: {
+  action?: 'idle' | 'speaking' | 'thinking' | 'confident' | 'curious' | 'excited';
+  size?: 'small' | 'medium' | 'large';
+  candidateName?: string;
+}) {
+  const scale = size === 'small' ? 0.6 : size === 'large' ? 1.4 : 1;
+
+  return (
+    <motion.div
+      className="relative"
+      style={{ transform: `scale(${scale})` }}
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.5 }}
+    >
+      {/* Subtle floating animation */}
+      <motion.div
+        animate={{ y: [0, -5, 0] }}
+        transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+      >
+        <svg width="100" height="140" viewBox="0 0 100 140">
+          {/* Gradient definitions */}
+          <defs>
+            <radialGradient id="cGlow">
+              <stop offset="0%" stopColor="rgba(16, 185, 129, 0.4)" />
+              <stop offset="100%" stopColor="rgba(16, 185, 129, 0)" />
+            </radialGradient>
+            <linearGradient id="cBody" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#10b981" />
+              <stop offset="100%" stopColor="#059669" />
+            </linearGradient>
+            <linearGradient id="cAccent" x1="0%" y1="0%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#34d399" />
+              <stop offset="100%" stopColor="#10b981" />
+            </linearGradient>
+            <linearGradient id="cSkin" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stopColor="#fcd5b8" />
+              <stop offset="100%" stopColor="#e8c4a8" />
+            </linearGradient>
+          </defs>
+
+          {/* Glow effect */}
+          <motion.ellipse
+            cx="50"
+            cy="70"
+            rx="40"
+            ry="55"
+            fill="url(#cGlow)"
+            animate={{ opacity: [0.3, 0.5, 0.3] }}
+            transition={{ duration: 2, repeat: Infinity }}
+          />
+
+          {/* Body - Professional blazer shape */}
+          <motion.path
+            d="M25 60 Q30 55 50 55 Q70 55 75 60 L80 115 Q75 120 50 120 Q25 120 20 115 Z"
+            fill="url(#cBody)"
+            animate={action === 'confident' ? { scale: [1, 1.03, 1] } : {}}
+            transition={{ duration: 0.5 }}
+          />
+
+          {/* Shirt collar */}
+          <path d="M40 60 L50 75 L60 60" fill="#f1f5f9" stroke="#e2e8f0" strokeWidth="1" />
+          <rect x="47" y="65" width="6" height="25" fill="#10b981" /> {/* Tie */}
+
+          {/* Chest badge/name tag */}
+          <rect x="55" y="80" width="18" height="12" rx="2" fill="#0f172a" />
+          <motion.rect
+            x="57"
+            y="82"
+            width="14"
+            height="8"
+            rx="1"
+            fill="#1e3a5f"
+            animate={{ opacity: [0.6, 1, 0.6] }}
+            transition={{ duration: 1.5, repeat: Infinity }}
+          />
+          <text x="64" y="89" textAnchor="middle" fill="#10b981" fontSize="6" fontFamily="monospace">
+            {candidateName}
+          </text>
+
+          {/* Head - Rounded friendly face */}
+          <motion.ellipse
+            cx="50"
+            cy="32"
+            rx="22"
+            ry="25"
+            fill="url(#cSkin)"
+            animate={
+              action === 'speaking' ? { scaleY: [1, 0.98, 1] } :
+              action === 'thinking' ? { rotate: [0, -3, 3, 0] } : {}
+            }
+            transition={{ duration: action === 'speaking' ? 0.3 : 1, repeat: Infinity }}
+          />
+
+          {/* Hair */}
+          <ellipse cx="50" cy="18" rx="20" ry="12" fill="#374151" />
+          <ellipse cx="35" cy="22" rx="8" ry="10" fill="#374151" />
+          <ellipse cx="65" cy="22" rx="8" ry="10" fill="#374151" />
+
+          {/* Eyebrows */}
+          <motion.g
+            animate={
+              action === 'curious' ? { y: -3 } :
+              action === 'excited' ? { y: -2 } : {}
+            }
+          >
+            <path d="M36 25 Q40 23 44 25" stroke="#374151" strokeWidth="2" fill="none" strokeLinecap="round" />
+            <path d="M56 25 Q60 23 64 25" stroke="#374151" strokeWidth="2" fill="none" strokeLinecap="round" />
+          </motion.g>
+
+          {/* Eyes */}
+          <motion.g
+            animate={
+              action === 'excited' ? { scale: [1, 1.1, 1] } :
+              action === 'speaking' ? { scaleY: [1, 0.9, 1] } : {}
+            }
+            transition={{ duration: 0.3, repeat: Infinity }}
+          >
+            <ellipse cx="40" cy="32" rx="4" ry="4" fill="#1f2937" />
+            <ellipse cx="60" cy="32" rx="4" ry="4" fill="#1f2937" />
+            {/* Eye highlights */}
+            <circle cx="42" cy="30" r="1.5" fill="white" opacity="0.9" />
+            <circle cx="62" cy="30" r="1.5" fill="white" opacity="0.9" />
+          </motion.g>
+
+          {/* Mouth - Animated */}
+          <motion.path
+            d={
+              action === 'speaking' ? 'M42 44 Q50 52 58 44' :
+              action === 'excited' ? 'M42 44 Q50 54 58 44' :
+              action === 'thinking' ? 'M44 45 Q50 43 56 45' :
+              'M44 44 Q50 48 56 44'
+            }
+            fill={action === 'speaking' || action === 'excited' ? '#ef4444' : 'none'}
+            stroke="#dc2626"
+            strokeWidth="2"
+            strokeLinecap="round"
+          />
+
+          {/* Arms */}
+          {/* Left arm - can wave */}
+          <motion.g
+            animate={
+              action === 'excited' ? { rotate: [0, -20, 0], y: [0, -5, 0] } :
+              action === 'speaking' ? { rotate: [0, -5, 0] } : {}
+            }
+            transition={{ duration: 0.5, repeat: action === 'excited' ? Infinity : 0 }}
+            style={{ transformOrigin: '25px 70px' }}
+          >
+            <path d="M25 70 Q15 80 10 75" stroke="url(#cSkin)" strokeWidth="8" fill="none" strokeLinecap="round" />
+            <circle cx="8" cy="74" r="5" fill="url(#cSkin)" /> {/* Hand */}
+          </motion.g>
+
+          {/* Right arm - holding resume */}
+          <motion.g
+            animate={
+              action === 'confident' ? { y: [0, -3, 0] } : {}
+            }
+            transition={{ duration: 1, repeat: Infinity }}
+          >
+            <path d="M75 70 Q85 80 90 75" stroke="url(#cSkin)" strokeWidth="8" fill="none" strokeLinecap="round" />
+            <circle cx="92" cy="74" r="5" fill="url(#cSkin)" /> {/* Hand */}
+
+            {/* Resume in hand */}
+            <motion.g
+              initial={{ opacity: 0 }}
+              animate={{ opacity: action === 'confident' || action === 'idle' ? 1 : 0 }}
+            >
+              <rect x="85" y="60" width="12" height="16" rx="1" fill="white" />
+              <rect x="87" y="63" width="8" height="1.5" rx="0.5" fill="#9ca3af" />
+              <rect x="87" y="66" width="6" height="1" rx="0.5" fill="#d1d5db" />
+              <rect x="87" y="68" width="7" height="1" rx="0.5" fill="#d1d5db" />
+              <rect x="87" y="70" width="5" height="1" rx="0.5" fill="#d1d5db" />
+            </motion.g>
+          </motion.g>
+
+          {/* Thinking bubble when thinking */}
+          <AnimatePresence>
+            {action === 'thinking' && (
+              <motion.g
+                initial={{ opacity: 0, scale: 0 }}
+                animate={{ opacity: 1, scale: 1 }}
+                exit={{ opacity: 0, scale: 0 }}
+              >
+                <circle cx="75" cy="10" r="3" fill="#94a3b8" />
+                <circle cx="80" cy="5" r="2" fill="#94a3b8" />
+                <circle cx="84" cy="2" r="1.5" fill="#94a3b8" />
+              </motion.g>
+            )}
+          </AnimatePresence>
+
+          {/* Confidence sparkle when excited */}
+          <AnimatePresence>
+            {action === 'excited' && (
+              <motion.g
+                initial={{ opacity: 0 }}
+                animate={{ opacity: [0, 1, 0] }}
+                transition={{ duration: 1, repeat: Infinity }}
+              >
+                <path d="M80 15 L82 20 L87 20 L83 24 L85 29 L80 26 L75 29 L77 24 L73 20 L78 20 Z" fill="#fbbf24" />
+              </motion.g>
+            )}
+          </AnimatePresence>
+        </svg>
+      </motion.div>
+
+      {/* Label */}
+      <motion.div
+        className="absolute -bottom-6 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs text-emerald-300 font-medium"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.3 }}
+      >
+        Candidate {candidateName}
+      </motion.div>
+    </motion.div>
+  );
+}
+
+// ========================================
 // CHARACTER DESIGN: R-Bot (Recruiter)
 // Agile, floating, energetic, with scanner
 // ========================================

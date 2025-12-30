@@ -1,0 +1,7 @@
+Name: Priya Sharma
+Email: priya.sharma@example.com
+Current Title: Software Engineer
+Current Company: Google
+
+Employment:
+Mar 2018 – Present: Software Engineer, Google

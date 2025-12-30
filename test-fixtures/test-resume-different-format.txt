@@ -1,0 +1,72 @@
+PROFESSIONAL RESUME
+
+===========================================
+MARIA SANTOS GARCIA
+===========================================
+
+Contact Information:
+  * Email: maria.santos@gmail.com
+  * Phone: +1 (415) 555-9876
+  * LinkedIn: linkedin.com/in/mariasantos
+  * Location: San Francisco, California
+
+===========================================
+PROFESSIONAL SUMMARY
+===========================================
+
+Product Manager with 6 years of experience driving product strategy
+and roadmap execution. Proven track record of launching successful
+B2B SaaS products that generated $10M+ ARR.
+
+===========================================
+WORK EXPERIENCE
+===========================================
+
+PRODUCT MANAGER | TechStartup Inc.
+San Francisco, CA
+March 2022 - Present
+
+- Lead product strategy for enterprise analytics platform
+- Grew user base from 5,000 to 25,000 in 18 months
+- Collaborated with engineering team of 12 developers
+- Conducted 50+ customer interviews quarterly
+
+---
+
+ASSOCIATE PRODUCT MANAGER | DataFlow Systems
+Oakland, CA
+June 2019 - February 2022
+
+- Managed feature backlog for data integration tools
+- Launched 3 major product features per quarter
+- Reduced customer churn by 15% through UX improvements
+
+---
+
+BUSINESS ANALYST | ConsultCorp
+New York, NY
+August 2017 - May 2019
+
+- Analyzed business requirements for Fortune 500 clients
+- Created product specifications and wireframes
+- Facilitated stakeholder workshops
+
+===========================================
+EDUCATION
+===========================================
+
+MBA, Product Management Focus
+Stanford Graduate School of Business
+2017
+
+Bachelor of Science, Industrial Engineering
+University of California, Berkeley
+2015
+
+===========================================
+SKILLS
+===========================================
+
+Product: Roadmapping, User Research, A/B Testing, Agile/Scrum
+Tools: Jira, Figma, Amplitude, Mixpanel, SQL
+Technical: Python basics, Data Analysis, API Design

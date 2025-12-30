@@ -1,19 +1,75 @@
-import type { Job, Candidate, CandidateEvaluation, PersonalizedMessage, EnhancedIntake, SearchStrategy } from '../types';
+import type { Job, Candidate, CandidateEvaluation, PersonalizedMessage, EnhancedIntake, SearchStrategy, IdealCandidatePersona, LLMProvider, MultiLLMResult, MultiLLMJobAnalysis } from '../types';
 
+// ============================================
+// LLM CONFIGURATION - Multi-provider support
+// Uses backend proxy at localhost:3001 to avoid CORS issues
+// ============================================
 const OPENAI_API_KEY = import.meta.env.VITE_OPENAI_API_KEY || '';
+const ANTHROPIC_API_KEY = import.meta.env.VITE_ANTHROPIC_API_KEY || '';
+const GEMINI_API_KEY = import.meta.env.VITE_GOOGLE_API_KEY || import.meta.env.VITE_GEMINI_API_KEY || '';
 
-interface OpenAIMessage {
+// Backend proxy URL - set to empty to use direct API calls
+const API_PROXY_URL = 'http://localhost:3001';
+
+export interface LLMConfig {
+  provider: LLMProvider;
+  isConfigured: boolean;
+}
+
+export function getLLMProviders(): LLMConfig[] {
+  return [
+    { provider: 'openai', isConfigured: !!OPENAI_API_KEY },
+    { provider: 'anthropic', isConfigured: !!ANTHROPIC_API_KEY },
+    { provider: 'gemini', isConfigured: !!GEMINI_API_KEY },
+  ];
+}
+
+export function getConfiguredProviders(): LLMProvider[] {
+  return getLLMProviders().filter(p => p.isConfigured).map(p => p.provider);
+}
+
+interface LLMMessage {
   role: 'system' | 'user' | 'assistant';
   content: string;
 }
 
-async function callOpenAI(
-  messages: OpenAIMessage[],
+// ============================================
+// UNIFIED LLM CALL VIA PROXY
+// Routes all requests through backend to avoid CORS issues
+// ============================================
+async function callViaProxy(
+  provider: LLMProvider,
+  messages: LLMMessage[],
   jsonMode = false,
-  temperature = 0.25 // Low temperature for analytical, factual responses
+  temperature = 0.25
+): Promise<string> {
+  const response = await fetch(`${API_PROXY_URL}/api/${provider}`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ messages, jsonMode, temperature }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error || `Failed to call ${provider} API`);
+  }
+
+  const data = await response.json();
+  return data.content;
+}
+
+// ============================================
+// DIRECT API CALLS (fallback if proxy unavailable)
+// ============================================
+async function callOpenAIDirect(
+  messages: LLMMessage[],
+  jsonMode = false,
+  temperature = 0.25
 ): Promise<string> {
   if (!OPENAI_API_KEY) {
-    throw new Error('OpenAI API key not configured. Please set VITE_OPENAI_API_KEY in your .env file.');
+    throw new Error('OpenAI API key not configured.');
   }
 
   const response = await fetch('https://api.openai.com/v1/chat/completions', {
@@ -40,8 +96,156 @@ async function callOpenAI(
   return data.choices[0].message.content;
 }
 
+async function callGeminiDirect(
+  messages: LLMMessage[],
+  jsonMode = false,
+  temperature = 0.25
+): Promise<string> {
+  if (!GEMINI_API_KEY) {
+    throw new Error('Gemini API key not configured.');
+  }
+
+  const systemMessage = messages.find(m => m.role === 'system')?.content || '';
+  const contents = messages.filter(m => m.role !== 'system').map(m => ({
+    role: m.role === 'user' ? 'user' : 'model',
+    parts: [{ text: m.content }],
+  }));
+
+  if (systemMessage) {
+    contents.unshift({
+      role: 'user',
+      parts: [{ text: `System Instructions:\n${systemMessage}${jsonMode ? '\n\nIMPORTANT: Respond with valid JSON only.' : ''}` }],
+    });
+    contents.splice(1, 0, {
+      role: 'model',
+      parts: [{ text: 'Understood. I will follow these instructions.' }],
+    });
+  }
+
+  const response = await fetch(
+    `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`,
+    {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        contents,
+        generationConfig: {
+          temperature,
+          maxOutputTokens: 4096,
+          ...(jsonMode && { responseMimeType: 'application/json' }),
+        },
+      }),
+    }
+  );
+
+  if (!response.ok) {
+    const error = await response.json();
+    throw new Error(error.error?.message || 'Failed to call Gemini API');
+  }
+
+  const data = await response.json();
+  return data.candidates[0].content.parts[0].text;
+}
+
+// ============================================
+// UNIFIED LLM CALL - Uses proxy first, falls back to direct
+// ============================================
+export async function callLLM(
+  provider: LLMProvider,
+  messages: LLMMessage[],
+  jsonMode = false,
+  temperature = 0.25
+): Promise<string> {
+  // Try proxy first
+  try {
+    return await callViaProxy(provider, messages, jsonMode, temperature);
+  } catch (proxyError) {
+    const errorMessage = proxyError instanceof Error ? proxyError.message : String(proxyError);
+
+    // Don't fall back if the proxy returned a valid error (like rate limit or API error)
+    // Only fall back if the proxy itself is unavailable (network/connection error)
+    const isProxyError = errorMessage.includes('rate_limit') ||
+      errorMessage.includes('rate limit') ||
+      errorMessage.includes('API error') ||
+      errorMessage.includes('API key') ||
+      errorMessage.includes('Unauthorized') ||
+      errorMessage.includes('401') ||
+      errorMessage.includes('429') ||
+      errorMessage.includes('500');
+
+    if (isProxyError) {
+      // Proxy is working but returned an API error - don't fall back, just rethrow
+      throw proxyError;
+    }
+
+    console.warn(`Proxy unavailable for ${provider}, trying direct call...`, proxyError);
+
+    // Fall back to direct calls (only works for OpenAI and Gemini due to CORS)
+    switch (provider) {
+      case 'openai':
+        return callOpenAIDirect(messages, jsonMode, temperature);
+      case 'gemini':
+        return callGeminiDirect(messages, jsonMode, temperature);
+      case 'anthropic':
+        throw new Error('Claude requires the backend proxy server. Run: node server.js');
+      default:
+        throw new Error(`Unknown LLM provider: ${provider}`);
+    }
+  }
+}
+
+// ============================================
+// MULTI-LLM CALL - Calls all configured providers
+// ============================================
+
+export async function callAllLLMs<T>(
+  messages: LLMMessage[],
+  jsonMode = false,
+  temperature = 0.25,
+  parser?: (response: string) => T
+): Promise<MultiLLMResult<T>[]> {
+  const providers = getConfiguredProviders();
+
+  if (providers.length === 0) {
+    return [];
+  }
+
+  const results = await Promise.allSettled(
+    providers.map(async (provider) => {
+      const response = await callLLM(provider, messages, jsonMode, temperature);
+      const parsed = parser ? parser(response) : (response as unknown as T);
+      return { provider, result: parsed, error: null };
+    })
+  );
+
+  return results.map((result, index) => {
+    if (result.status === 'fulfilled') {
+      return result.value;
+    } else {
+      return {
+        provider: providers[index],
+        result: null,
+        error: result.reason?.message || 'Unknown error',
+      };
+    }
+  });
+}
+
+// Call the selected LLM provider (uses store)
+export async function callSelectedLLM(
+  messages: LLMMessage[],
+  jsonMode = false,
+  temperature = 0.25,
+  selectedProvider?: LLMProvider
+): Promise<string> {
+  // If no provider specified, default to anthropic (Claude)
+  const provider = selectedProvider || 'anthropic';
+  return callLLM(provider, messages, jsonMode, temperature);
+}
+
 export async function extractJobDetails(
-  jobDescription: string
+  jobDescription: string,
+  selectedProvider?: LLMProvider
 ): Promise<Partial<Job>> {
   // MASTER PROMPT: JD ANALYZER with Role Prompting + Chain of Thought
   const systemPrompt = `### SYSTEM ROLE
@@ -96,7 +300,8 @@ Return a JSON object with these EXACT fields:
 
 Be precise and evidence-based. For each skill, only include it if you can point to where it appears in the JD.`;
 
-  const response = await callOpenAI(
+  const response = await callLLM(
+    selectedProvider || 'anthropic',
     [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: jobDescription },
@@ -108,10 +313,204 @@ Be precise and evidence-based. For each skill, only include it if you can point 
   return JSON.parse(response);
 }
 
+// ============================================
+// MULTI-LLM JD EXTRACTION - Uses all configured LLMs
+// ============================================
+
+export async function extractJobDetailsMultiLLM(
+  jobDescription: string
+): Promise<MultiLLMJobAnalysis> {
+  const systemPrompt = `### SYSTEM ROLE
+You are an expert Senior Talent Acquisition Lead with 20 years of experience in technical and executive recruiting. Your specialty is deconstructing complex Job Descriptions (JDs) to extract critical hiring criteria that others often miss.
+
+### INSTRUCTIONS
+I will provide you with a Job Description. Your task is to analyze this text deeply. You must read through the JD twice internally before generating an output to ensure no detail is missed.
+
+### ANALYSIS STEPS (Chain of Thought)
+1. **First Pass:** Identify the explicit requirements, logistics, and organizational structure.
+2. **Second Pass:** Infer the implicit needs, such as "Deal Breakers" (e.g., if a clearance is required, citizenship is an implied deal breaker) and specific sales or certification requirements.
+3. **Synthesis:** Structure the data into the specific format below. If a specific detail (like Budget or Manager Name) is not present in the text, explicitly state null.
+
+### CRITICAL EXTRACTION RULES
+
+**Deal Breakers to Infer:**
+- Security clearance mentioned → Citizenship is likely required
+- "Must be authorized to work" → No sponsorship available
+- "On-site required" → Remote not an option
+- Specific certifications listed as "required" → Non-negotiable
+- "Book of business required" → Sales quota expectation
+
+**Sponsorship Detection:**
+- "Visa sponsorship is not available" → requiresSponsorship: false
+- "Must be authorized to work in the US" → requiresSponsorship: false
+- "US Citizen or Green Card only" → requiresSponsorship: false
+- "Will sponsor" or no mention → requiresSponsorship: null
+- "Sponsorship available" → requiresSponsorship: true
+
+**Skills Extraction:**
+- Must-Have: Skills explicitly listed as "required", "must have", "essential", or in a "Requirements" section
+- Nice-to-Have: Skills listed as "preferred", "nice to have", "bonus", "plus", or in a "Preferred Qualifications" section
+
+Return a JSON object with these EXACT fields:
+{
+  "title": "<string: the job title>",
+  "company": "<string: company name, or 'Company' if not found>",
+  "department": "<string: department/team name if mentioned, or null>",
+  "requiresSponsorship": <boolean | null: true if available, false if not available, null if unclear>,
+  "location": "<string | null: city, state, country or 'Remote'>",
+  "workMode": "<'remote' | 'hybrid' | 'on-site': infer from description>",
+  "salaryMin": <number | null: minimum annual salary>,
+  "salaryMax": <number | null: maximum annual salary>,
+  "mustHaveSkills": ["<skill 1>", "<skill 2>", ...],
+  "niceToHaveSkills": ["<skill 1>", "<skill 2>", ...],
+  "minYearsExperience": <number: minimum years required, default 0>,
+  "certifications": ["<required cert 1>", ...],
+  "dealBreakers": ["<deal breaker 1 - e.g., 'US Citizenship required for security clearance'>", ...],
+  "hiringManagerTitle": "<string | null: who does this role report to>",
+  "executiveSummary": "<string: 2-3 sentence ELI5 summary of what this person will do day-to-day>"
+}
+
+Be precise and evidence-based. For each skill, only include it if you can point to where it appears in the JD.`;
+
+  const messages = [
+    { role: 'system' as const, content: systemPrompt },
+    { role: 'user' as const, content: jobDescription },
+  ];
+
+  // Call all configured LLMs in parallel
+  const results = await callAllLLMs<Partial<Job>>(
+    messages,
+    true,
+    0.2,
+    (response) => JSON.parse(response)
+  );
+
+  // Combine results from all LLMs
+  const validResults = results.filter((r) => r.result !== null);
+
+  if (validResults.length === 0) {
+    throw new Error('No LLM providers returned valid results');
+  }
+
+  // Merge results with voting/consensus
+  const combinedJob = mergeJobResults(validResults.map((r) => r.result!));
+
+  // Calculate confidence based on agreement
+  const confidence = calculateConfidence(validResults.map((r) => r.result!));
+
+  return {
+    combinedJob,
+    providerResults: results,
+    confidence,
+  };
+}
+
+// Merge job results from multiple LLMs with voting
+function mergeJobResults(results: Partial<Job>[]): Partial<Job> {
+  if (results.length === 0) return {};
+  if (results.length === 1) return results[0];
+
+  // Helper to get most common value
+  const getMostCommon = <T>(values: T[]): T | undefined => {
+    if (values.length === 0) return undefined;
+    const counts = new Map<string, { value: T; count: number }>();
+    values.forEach((v) => {
+      if (v === undefined || v === null) return;
+      const key = JSON.stringify(v);
+      const existing = counts.get(key);
+      if (existing) {
+        existing.count++;
+      } else {
+        counts.set(key, { value: v, count: 1 });
+      }
+    });
+    const sorted = Array.from(counts.values()).sort((a, b) => b.count - a.count);
+    return sorted.length > 0 ? sorted[0].value : undefined;
+  };
+
+  // Helper to merge arrays with deduplication
+  const mergeArrays = (arrays: string[][]): string[] => {
+    const allItems = arrays.flat();
+    const uniqueItems = [...new Set(allItems.map((s) => s.toLowerCase()))];
+    // Get original casing from first occurrence
+    return uniqueItems.map((lower) => allItems.find((s) => s.toLowerCase() === lower) || lower);
+  };
+
+  return {
+    title: getMostCommon(results.map((r) => r.title).filter(Boolean) as string[]),
+    company: getMostCommon(results.map((r) => r.company).filter(Boolean) as string[]),
+    department: getMostCommon(results.map((r) => r.department).filter((d) => d !== null) as string[]) || null,
+    location: getMostCommon(results.map((r) => r.location).filter((l) => l !== null) as string[]) || null,
+    workMode: getMostCommon(results.map((r) => r.workMode).filter(Boolean) as Job['workMode'][]),
+    requiresSponsorship: getMostCommon(results.map((r) => r.requiresSponsorship)),
+    salaryMin: getMostCommon(results.map((r) => r.salaryMin).filter((s) => s !== null) as number[]) || null,
+    salaryMax: getMostCommon(results.map((r) => r.salaryMax).filter((s) => s !== null) as number[]) || null,
+    mustHaveSkills: mergeArrays(results.map((r) => r.mustHaveSkills || [])),
+    niceToHaveSkills: mergeArrays(results.map((r) => r.niceToHaveSkills || [])),
+    minYearsExperience: getMostCommon(results.map((r) => r.minYearsExperience).filter((y) => y !== undefined) as number[]) || 0,
+    certifications: mergeArrays(results.map((r) => r.certifications || [])),
+    dealBreakers: mergeArrays(results.map((r) => r.dealBreakers || [])),
+    hiringManagerTitle: getMostCommon(results.map((r) => r.hiringManagerTitle).filter((h) => h !== null) as string[]) || null,
+    executiveSummary: results[0].executiveSummary || null, // Take the first valid summary
+  };
+}
+
+// Calculate confidence scores based on agreement between LLMs
+function calculateConfidence(results: Partial<Job>[]): { title: number; skills: number; overall: number } {
+  if (results.length <= 1) {
+    return { title: 100, skills: 100, overall: 100 };
+  }
+
+  // Title agreement
+  const titles = results.map((r) => r.title?.toLowerCase()).filter(Boolean);
+  const uniqueTitles = new Set(titles);
+  const titleConfidence = Math.round((1 - (uniqueTitles.size - 1) / results.length) * 100);
+
+  // Skills agreement (Jaccard similarity)
+  const allMustHave = results.map((r) => new Set(r.mustHaveSkills?.map((s) => s.toLowerCase()) || []));
+  let skillsAgreement = 0;
+  if (allMustHave.length > 1) {
+    for (let i = 0; i < allMustHave.length; i++) {
+      for (let j = i + 1; j < allMustHave.length; j++) {
+        const intersection = [...allMustHave[i]].filter((x) => allMustHave[j].has(x)).length;
+        const union = new Set([...allMustHave[i], ...allMustHave[j]]).size;
+        skillsAgreement += union > 0 ? intersection / union : 1;
+      }
+    }
+    skillsAgreement = skillsAgreement / ((allMustHave.length * (allMustHave.length - 1)) / 2);
+  } else {
+    skillsAgreement = 1;
+  }
+  const skillsConfidence = Math.round(skillsAgreement * 100);
+
+  // Overall is average of components
+  const overall = Math.round((titleConfidence + skillsConfidence) / 2);
+
+  return { title: titleConfidence, skills: skillsConfidence, overall };
+}
+
+// Helper function to truncate text to stay within token limits
+// Rough estimate: 1 token ≈ 4 characters for English text
+function truncateToTokenLimit(text: string, maxTokens: number): string {
+  const maxChars = maxTokens * 4;
+  if (text.length <= maxChars) return text;
+
+  // Truncate and add indicator
+  return text.substring(0, maxChars - 100) + '\n\n[... Resume truncated for length. Key information above should be sufficient for evaluation ...]';
+}
+
 export async function evaluateCandidate(
   candidate: Candidate,
   job: Job
 ): Promise<CandidateEvaluation> {
+  // Truncate resume and JD to prevent token limit errors
+  // Reserve ~8K tokens for system prompt, ~4K for response = ~12K for content
+  const maxResumeTokens = 6000; // ~24K chars
+  const maxJDTokens = 4000; // ~16K chars
+
+  const truncatedResume = truncateToTokenLimit(candidate.rawResume || '', maxResumeTokens);
+  const truncatedJD = truncateToTokenLimit(job.rawDescription || '', maxJDTokens);
+
   // MASTER PROMPT: Resume Analysis, Ranking & Screening Notes
   // Combines Role Prompting + Evidence Verification + 11-Section Evaluation Framework
   // FULLY GENERIC - adapts to ANY job description and resume
@@ -139,6 +538,12 @@ Extract and identify:
 
 **Section 2: Candidate Summary**
 Brief summary of experience level, industries worked in, functional/domain strengths, notable capabilities.
+
+**Section 2.5: Career Journey (Last 10 Years)**
+Extract a structured timeline of their career. For each role, identify if it was:
+- "Growth": Promotion or increased responsibility within same company or move to better role
+- "Pivot": Significant change in industry or function
+- "Tenure": Long-term commitment (3+ years) in a role
 
 **Section 3: Must-Have Requirements Match**
 For EACH must-have requirement from the JD: Met / Partially Met / Not Met
@@ -251,6 +656,16 @@ Return a JSON object with this EXACT structure:
     "location": "<City, State/Country>",
     "labels": ["<'Contract Candidate' if contractor>", "<'Frequent Job Changes Noted' if applicable>"]
   },
+
+  "careerJourney": [
+    {
+      "company": "<Company Name>",
+      "role": "<Role Title>",
+      "startYear": <number>,
+      "endYear": <number or "Present">,
+      "type": "<Growth|Pivot|Tenure>"
+    }
+  ],
 
   "flags": {
     "isJobHopper": <boolean>,
@@ -366,17 +781,55 @@ ${job.certifications?.length > 0 ? `Required Certifications: ${job.certification
 ${job.notes ? `Notes: ${job.notes}` : ''}
 
 FULL JOB DESCRIPTION (source of truth for all requirements):
-${job.rawDescription}`;
+${truncatedJD}`;
 
-  const response = await callOpenAI(
-    [
-      { role: 'system', content: systemPrompt },
-      { role: 'user', content: `CANDIDATE RESUME:\n\n${candidate.rawResume}` },
-    ],
-    true
-  );
+  // Debug logging for diagnosis
+  const isDebugMode = import.meta.env.VITE_LOTUS_DEBUG === '1';
 
-  return JSON.parse(response);
+  if (isDebugMode) {
+    console.group(`[LOTUS DEBUG] Evaluating: ${candidate.name}`);
+    console.log('Original resume length:', candidate.rawResume?.length || 0);
+    console.log('Truncated resume length:', truncatedResume.length);
+    console.log('Original JD length:', job.rawDescription?.length || 0);
+    console.log('Truncated JD length:', truncatedJD.length);
+    console.log('Resume preview (first 500 chars):', truncatedResume.substring(0, 500));
+    console.log('Job title:', job.title);
+    console.log('Must-have skills:', job.mustHaveSkills);
+    console.log('Nice-to-have skills:', job.niceToHaveSkills);
+  }
+
+  try {
+    const response = await callLLM(
+      'anthropic',
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `CANDIDATE RESUME:\n\n${truncatedResume}` },
+      ],
+      true
+    );
+
+    if (isDebugMode) {
+      console.log('Raw LLM response length:', response?.length || 0);
+      console.log('Raw LLM response preview:', response?.substring(0, 1000));
+    }
+
+    const parsed = JSON.parse(response);
+
+    if (isDebugMode) {
+      console.log('Parsed evaluation score:', parsed.score);
+      console.log('Parsed recommendation:', parsed.recommendation);
+      console.log('Candidate profile from evaluation:', parsed.candidateProfile);
+      console.groupEnd();
+    }
+
+    return parsed;
+  } catch (error) {
+    if (isDebugMode) {
+      console.error('Evaluation failed:', error);
+      console.groupEnd();
+    }
+    throw error;
+  }
 }
 
 export async function generateOutreachEmail(
@@ -540,7 +993,8 @@ CRITICAL REMINDERS:
 4. Questions should help you decide if they're right for THIS specific role
 5. Write as a real human, not a template`;
 
-  const response = await callOpenAI(
+  const response = await callLLM(
+    'anthropic',
     [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: 'Generate the personalized message now.' },
@@ -818,8 +1272,8 @@ export function getDemoOutreachEmail(candidate: Candidate, job: Job): string {
   const subjectDetail = mustHaveSkills.length > 0
     ? `your ${mustHaveSkills[0]} experience`
     : strengths.length > 0
-    ? 'your background'
-    : `the ${job.title} role`;
+      ? 'your background'
+      : `the ${job.title} role`;
 
   return `Subject: ${firstName}, we'd love to learn more about ${subjectDetail}
 
@@ -918,7 +1372,8 @@ Return a JSON object with this EXACT structure:
 
 Be comprehensive but evidence-based. For each field, only include information you can reasonably extract or infer from the JD.`;
 
-  const response = await callOpenAI(
+  const response = await callLLM(
+    'anthropic',
     [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: `JOB DESCRIPTION:\n\n${rawJobDescription}` },
@@ -969,9 +1424,55 @@ export function getDemoEnhancedIntake(job: Job): EnhancedIntake {
 // SEARCH STRATEGY - Generate LinkedIn sourcing strategy
 // ============================================
 export async function generateSearchStrategy(
-  intake: EnhancedIntake,
-  rawJobDescription: string
+  jobOrIntake: Job | EnhancedIntake,
+  intakeOrRawDescription?: EnhancedIntake | string
 ): Promise<SearchStrategy> {
+  // Handle overloaded signatures:
+  // 1. generateSearchStrategy(job: Job, intake?: EnhancedIntake)
+  // 2. generateSearchStrategy(intake: EnhancedIntake, rawJobDescription: string) [legacy]
+  let intake: EnhancedIntake;
+  let rawJobDescription: string;
+
+  if ('rawDescription' in jobOrIntake) {
+    // Called with Job as first argument
+    const job = jobOrIntake as Job;
+    rawJobDescription = job.rawDescription || '';
+
+    // If intake provided as second arg, use it; otherwise create from job
+    if (intakeOrRawDescription && typeof intakeOrRawDescription === 'object') {
+      intake = intakeOrRawDescription as EnhancedIntake;
+    } else {
+      // Create a minimal intake from the job
+      intake = {
+        primaryTitle: job.title,
+        alternateTitles: [],
+        seniorityLevel: job.minYearsExperience >= 8 ? 'Senior' : job.minYearsExperience >= 5 ? 'Mid' : 'Junior',
+        locations: job.location ? [job.location] : [],
+        workModel: job.workMode === 'on-site' ? 'onsite' : job.workMode === 'hybrid' ? 'hybrid' : 'remote',
+        willingToRelocate: null,
+        mustHaveSkills: job.mustHaveSkills || [],
+        niceToHaveSkills: job.niceToHaveSkills || [],
+        domainContext: {
+          industry: 'Technology',
+          productType: 'B2B SaaS',
+          teamSize: null,
+          reportingTo: job.hiringManagerTitle || null,
+        },
+        targetCompanies: [],
+        competitorCompanies: [],
+        yearsOfExperienceMin: job.minYearsExperience || 3,
+        yearsOfExperienceMax: Math.max((job.minYearsExperience || 3) + 5, 10),
+        salaryRangeMin: job.salaryMin,
+        salaryRangeMax: job.salaryMax,
+        keyResponsibilities: [],
+        hiringUrgency: null,
+      };
+    }
+  } else {
+    // Called with EnhancedIntake as first argument (legacy)
+    intake = jobOrIntake as EnhancedIntake;
+    rawJobDescription = (intakeOrRawDescription as string) || '';
+  }
   const systemPrompt = `### SYSTEM ROLE
 You are an expert Technical Sourcer and Recruiting Strategist. Your specialty is crafting highly effective LinkedIn search strategies that surface the best candidates.
 
@@ -1072,7 +1573,8 @@ INTAKE SUMMARY:
 - Competitors: ${intake.competitorCompanies.join(', ')}
 `;
 
-  const response = await callOpenAI(
+  const response = await callLLM(
+    'anthropic',
     [
       { role: 'system', content: systemPrompt },
       { role: 'user', content: `${intakeContext}\n\nFULL JOB DESCRIPTION:\n\n${rawJobDescription}` },
@@ -1144,6 +1646,1232 @@ export function getDemoSearchStrategy(intake: EnhancedIntake): SearchStrategy {
   };
 }
 
+// ============================================
+// RESUME PARSING - Extract structured data from resume text
+// ============================================
+export interface ParsedResume {
+  name: string;
+  email: string | null;
+  phone: string | null;
+  location: string | null;
+  currentTitle: string | null;
+  currentCompany: string | null;
+  yearsExperience: number | null;
+  skills: string[];
+  workHistory: Array<{
+    title: string;
+    company: string;
+    duration: string;
+    startDate: string | null;
+    endDate: string | null;
+    highlights: string[];
+  }>;
+  education: Array<{
+    degree: string;
+    institution: string;
+    year: string | null;
+  }>;
+  summary: string | null;
+  requiresSponsorship: boolean | null;
+}
+
+export async function parseResumeWithAI(resumeText: string, fileName?: string): Promise<ParsedResume> {
+  // If API not configured or resume too short, use basic parsing
+  if (!isAPIConfigured() || resumeText.length < 100) {
+    return parseResumeBasic(resumeText, fileName);
+  }
+
+  const systemPrompt = `You are an expert resume parser. Extract structured information from the resume text provided.
+
+Return a JSON object with this EXACT structure:
+{
+  "name": "Full name of the candidate",
+  "email": "email@example.com or null",
+  "phone": "phone number or null",
+  "location": "City, State/Country or null",
+  "currentTitle": "Current or most recent job title or null",
+  "currentCompany": "Current or most recent employer or null",
+  "yearsExperience": <number of years of professional experience or null>,
+  "skills": ["skill1", "skill2", ...],
+  "workHistory": [
+    {
+      "title": "Job Title",
+      "company": "Company Name",
+      "duration": "2020 - Present",
+      "startDate": "2020-01 or null",
+      "endDate": "present or 2024-01 or null",
+      "highlights": ["key achievement 1", "key achievement 2"]
+    }
+  ],
+  "education": [
+    {
+      "degree": "BS Computer Science",
+      "institution": "University Name",
+      "year": "2018 or null"
+    }
+  ],
+  "summary": "1-2 sentence professional summary or null",
+  "requiresSponsorship": true/false/null
+}
+
+IMPORTANT:
+- Only include information that is ACTUALLY in the resume
+- Do NOT invent or guess missing information
+- For yearsExperience, calculate from the earliest work date to present
+- For skills, extract technical and professional skills mentioned
+- Keep workHistory to the last 10 years maximum
+- For requiresSponsorship, only set true/false if explicitly stated, otherwise null`;
+
+  // Debug logging for diagnosis
+  const isDebugMode = import.meta.env.VITE_LOTUS_DEBUG === '1';
+
+  if (isDebugMode) {
+    console.group(`[LOTUS DEBUG] Parsing Resume: ${fileName || 'Unknown'}`);
+    console.log('Resume text length:', resumeText?.length || 0);
+    console.log('Resume preview (first 500 chars):', resumeText?.substring(0, 500));
+  }
+
+  try {
+    const response = await callLLM(
+      'anthropic',
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `Parse this resume:\n\n${resumeText}` },
+      ],
+      true,
+      0.1
+    );
+
+    if (isDebugMode) {
+      console.log('Raw AI response length:', response?.length || 0);
+      console.log('Raw AI response:', response?.substring(0, 1500));
+    }
+
+    const parsed = JSON.parse(response);
+
+    if (isDebugMode) {
+      console.log('Parsed resume data:', {
+        name: parsed.name,
+        email: parsed.email,
+        currentTitle: parsed.currentTitle,
+        currentCompany: parsed.currentCompany,
+        yearsExperience: parsed.yearsExperience,
+        skillsCount: parsed.skills?.length || 0,
+        workHistoryCount: parsed.workHistory?.length || 0
+      });
+      console.groupEnd();
+    }
+
+    return {
+      name: parsed.name || 'Unknown Candidate',
+      email: parsed.email || null,
+      phone: parsed.phone || null,
+      location: parsed.location || null,
+      currentTitle: parsed.currentTitle || null,
+      currentCompany: parsed.currentCompany || null,
+      yearsExperience: parsed.yearsExperience || null,
+      skills: parsed.skills || [],
+      workHistory: parsed.workHistory || [],
+      education: parsed.education || [],
+      summary: parsed.summary || null,
+      requiresSponsorship: parsed.requiresSponsorship ?? null,
+    };
+  } catch (error) {
+    if (isDebugMode) {
+      console.error('AI resume parsing failed:', error);
+      console.groupEnd();
+    }
+    console.error('AI resume parsing failed, using basic parsing:', error);
+    return parseResumeBasic(resumeText, fileName);
+  }
+}
+
+// Basic resume parsing without AI (fallback)
+function parseResumeBasic(resumeText: string, fileName?: string): ParsedResume {
+  // Extract email with multiple patterns
+  let email: string | null = null;
+  const emailPatterns = [
+    /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/,
+    /(?:e-?mail|email)[:\s]+([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})/i,
+    /<([a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,})>/,
+  ];
+  for (const pattern of emailPatterns) {
+    const match = resumeText.match(pattern);
+    if (match) {
+      email = match[1] || match[0];
+      break;
+    }
+  }
+
+  // Extract phone with multiple patterns
+  let phone: string | null = null;
+  const phonePatterns = [
+    /(?:\+?1[-.\s]?)?\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4}/,
+    /\+[0-9]{1,3}[-.\s]?[0-9]{2,4}[-.\s]?[0-9]{2,4}[-.\s]?[0-9]{2,4}/,
+    /(?:phone|tel|mobile|cell)[:\s]+(\+?[0-9][-.\s]?)?(\(?[0-9]{3}\)?[-.\s]?[0-9]{3}[-.\s]?[0-9]{4})/i,
+    /\b[0-9]{10}\b/,
+    /\b[0-9]{3}\s[0-9]{3}\s[0-9]{4}\b/,
+  ];
+  for (const pattern of phonePatterns) {
+    const match = resumeText.match(pattern);
+    if (match) {
+      let phoneNum = match[0];
+      if (/^(?:phone|tel|mobile|cell)/i.test(phoneNum)) {
+        const numMatch = phoneNum.match(/[0-9+][0-9\s.\-()]+/);
+        if (numMatch) phoneNum = numMatch[0];
+      }
+      phone = phoneNum.trim();
+      break;
+    }
+  }
+
+  // Extract name from first lines with improved detection
+  const lines = resumeText.split('\n').filter(l => l.trim());
+  let name = 'Unknown Candidate';
+
+  // Skip lines that look like headers, contact info, URLs
+  const skipPatterns = [
+    /^(resume|cv|curriculum vitae|contact|portfolio|linkedin|http|www\.)/i,
+    /@/, // Skip email lines
+    /^\+?\d[\d\s\-().]{8,}$/, // Skip phone number lines
+    /^(phone|tel|email|address|location)/i,
+  ];
+
+  for (const line of lines.slice(0, 10)) {
+    const cleaned = line.trim();
+
+    // Skip if matches any skip pattern
+    if (skipPatterns.some(p => p.test(cleaned))) continue;
+
+    // Remove common prefixes
+    const nameCleaned = cleaned
+      .replace(/^(name|full name|candidate)[\s:]+/i, '')
+      .replace(/[|•·\-–—]/g, '')
+      .trim();
+
+    // Check if it looks like a name
+    if (nameCleaned.length >= 3 && nameCleaned.length <= 50 && /^[A-Za-z\s'-]+$/.test(nameCleaned)) {
+      const words = nameCleaned.split(/\s+/).filter(w => w.length >= 2);
+      if (words.length >= 1 && words.length <= 4) {
+        name = words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+        break;
+      }
+    }
+  }
+
+  // If still unknown, try to extract from email
+  if (name === 'Unknown Candidate' && email) {
+    const emailName = email.split('@')[0]
+      .replace(/[._]/g, ' ')
+      .replace(/\d+/g, '')
+      .trim();
+    if (emailName.length >= 3) {
+      const words = emailName.split(/\s+/).filter(w => w.length >= 2);
+      if (words.length >= 1 && words.length <= 3) {
+        name = words.map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+      }
+    }
+  }
+
+  // If still unknown, try filename
+  if (name === 'Unknown Candidate' && fileName) {
+    const baseName = fileName.replace(/\.[^.]+$/, '').replace(/[-_]/g, ' ');
+    const cleaned = baseName.replace(/\b(resume|cv|final|draft|\d+)\b/gi, '').trim();
+    if (cleaned.length >= 3) {
+      name = cleaned.split(/\s+/).map(w => w.charAt(0).toUpperCase() + w.slice(1).toLowerCase()).join(' ');
+    }
+  }
+
+  // Extract skills (look for common skill-related sections)
+  const skills: string[] = [];
+  const skillPatterns = [
+    /(?:skills|technologies|tech stack|proficient in|expertise)[:\s]*([^\n]+)/gi,
+    /\b(javascript|typescript|python|java|c\+\+|go|rust|ruby|php|swift|kotlin|react|angular|vue|node\.?js|express|django|flask|spring|aws|azure|gcp|docker|kubernetes|sql|mongodb|postgresql|mysql|redis|graphql|rest|api|git|agile|scrum)\b/gi,
+  ];
+
+  for (const pattern of skillPatterns) {
+    const matches = resumeText.matchAll(pattern);
+    for (const match of matches) {
+      const skill = match[1] || match[0];
+      if (skill && !skills.includes(skill.toLowerCase())) {
+        skills.push(skill);
+      }
+    }
+  }
+
+  return {
+    name,
+    email,
+    phone,
+    location: null,
+    currentTitle: null,
+    currentCompany: null,
+    yearsExperience: null,
+    skills: skills.slice(0, 20),
+    workHistory: [],
+    education: [],
+    summary: null,
+    requiresSponsorship: null,
+  };
+}
+
+// Get the API key for the selected LLM provider
+export function getSelectedAPIKey(): string {
+  // Get the selected provider from the store (if available)
+  // This is a bit of a workaround since we can't use hooks here
+  const selectedLLM = (typeof window !== 'undefined' && (window as unknown as { __selectedLLM?: LLMProvider }).__selectedLLM) || 'anthropic';
+
+  switch (selectedLLM) {
+    case 'anthropic': return ANTHROPIC_API_KEY;
+    case 'gemini': return GEMINI_API_KEY;
+    default: return OPENAI_API_KEY;
+  }
+}
+
 export function isAPIConfigured(): boolean {
-  return !!OPENAI_API_KEY;
+  // Check if any LLM provider is configured
+  return !!OPENAI_API_KEY || !!ANTHROPIC_API_KEY || !!GEMINI_API_KEY;
+}
+
+export function isProviderConfigured(provider: LLMProvider): boolean {
+  switch (provider) {
+    case 'openai': return !!OPENAI_API_KEY;
+    case 'anthropic': return !!ANTHROPIC_API_KEY;
+    case 'gemini': return !!GEMINI_API_KEY;
+    default: return false;
+  }
+}
+
+// ============================================
+// ROLE CALIBRATION - Market sense and difficulty assessment
+// ============================================
+import type { RoleCalibration, EmployerBranding, SourcingRedFlags, ResumeQuality, EvaluationConfidence, ConstraintMatch, CareerTimeline, EmploymentGap } from '../types';
+
+export async function generateRoleCalibration(job: Job): Promise<RoleCalibration> {
+  const systemPrompt = `You are an expert Technical Recruiting Strategist with 15+ years of market intelligence experience. Your specialty is assessing role difficulty and providing calibration insights.
+
+### TASK
+Analyze the job description and requirements to assess:
+1. How difficult this role will be to fill
+2. Whether the requirements are realistic for the compensation/level
+3. Market conditions for this type of talent
+4. Potential red flags or misalignments
+
+### DIFFICULTY SCORING (1-10)
+- 1-2 (Easy): Common skills, good compensation, flexible requirements
+- 3-4 (Moderate): Some specialized skills, competitive market
+- 5-6 (Hard): Rare skill combination, strict requirements, competitive compensation needed
+- 7-8 (Very Hard): Unicorn hunt, unrealistic expectations, or below-market compensation
+- 9-10 (Near Impossible): Multiple conflicting requirements, severely below market, extreme skill rarity
+
+### RED FLAGS TO DETECT
+- Senior expectations with junior title/salary
+- Too many must-have skills (over 8-10 is a red flag)
+- Unrealistic years of experience for the tech/skill (e.g., "10 years React" when React is 11 years old)
+- Mismatch between title seniority and responsibilities
+- Below-market salary for the required experience
+- Location constraints that limit candidate pool significantly
+
+Return a JSON object:
+{
+  "difficulty": "easy|moderate|hard|very_hard",
+  "difficultyScore": <1-10>,
+  "calibrationNotes": [
+    "<observation about the role's fillability>"
+  ],
+  "marketInsights": {
+    "salaryAssessment": "<assessment of salary vs market or null if no salary>",
+    "skillDemand": "<assessment of skill availability in market>",
+    "locationImpact": "<how location affects candidate pool>",
+    "experienceMatch": "<whether experience requirements match title level>"
+  },
+  "redFlags": [
+    "<any concerning mismatches or unrealistic expectations>"
+  ],
+  "suggestions": [
+    "<actionable suggestion to improve fillability>"
+  ],
+  "timeToFillEstimate": "<estimated time to fill with reasoning>"
+}`;
+
+  const jobContext = `
+JOB DETAILS:
+Title: ${job.title}
+Company: ${job.company}
+Location: ${job.location || 'Not specified'}
+Work Mode: ${job.workMode}
+Min Years Experience: ${job.minYearsExperience}
+Salary Range: ${job.salaryMin && job.salaryMax ? `$${job.salaryMin.toLocaleString()} - $${job.salaryMax.toLocaleString()}` : 'Not specified'}
+
+MUST-HAVE SKILLS (${job.mustHaveSkills.length}):
+${job.mustHaveSkills.join(', ') || 'None specified'}
+
+NICE-TO-HAVE SKILLS (${job.niceToHaveSkills.length}):
+${job.niceToHaveSkills.join(', ') || 'None specified'}
+
+DEAL BREAKERS:
+${job.dealBreakers?.join(', ') || 'None specified'}
+
+CERTIFICATIONS REQUIRED:
+${job.certifications?.join(', ') || 'None'}
+
+RAW JOB DESCRIPTION:
+${job.rawDescription}`;
+
+  try {
+    const response = await callLLM(
+      'anthropic',
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: jobContext },
+      ],
+      true,
+      0.3
+    );
+
+    return JSON.parse(response);
+  } catch (error) {
+    console.error('Role calibration failed:', error);
+    return getDemoRoleCalibration(job);
+  }
+}
+
+export function getDemoRoleCalibration(job: Job): RoleCalibration {
+  const skillCount = job.mustHaveSkills.length;
+  const hasCompetitiveSalary = job.salaryMax && job.salaryMax > 150000;
+  const isRemote = job.workMode === 'remote';
+
+  let difficultyScore = 5;
+  const redFlags: string[] = [];
+  const suggestions: string[] = [];
+  const calibrationNotes: string[] = [];
+
+  // Assess skill count
+  if (skillCount > 10) {
+    difficultyScore += 2;
+    redFlags.push(`High number of must-have skills (${skillCount}) may limit candidate pool`);
+    suggestions.push('Consider moving 2-3 must-have skills to nice-to-have');
+  } else if (skillCount > 7) {
+    difficultyScore += 1;
+    calibrationNotes.push(`${skillCount} must-have skills is on the higher end`);
+  }
+
+  // Assess experience requirements
+  if (job.minYearsExperience >= 10) {
+    difficultyScore += 1;
+    calibrationNotes.push('10+ years experience significantly narrows candidate pool');
+  }
+
+  // Assess salary
+  if (!job.salaryMin && !job.salaryMax) {
+    calibrationNotes.push('No salary range specified - may affect candidate interest');
+    suggestions.push('Adding a salary range can increase application rates by 30%+');
+  }
+
+  // Assess location
+  if (!isRemote && job.location) {
+    difficultyScore += 1;
+    calibrationNotes.push(`On-site requirement in ${job.location} limits to local candidates`);
+    suggestions.push('Consider offering hybrid or remote options to expand candidate pool');
+  } else if (isRemote) {
+    difficultyScore -= 1;
+    calibrationNotes.push('Remote option significantly expands candidate pool');
+  }
+
+  // Determine difficulty level
+  let difficulty: RoleCalibration['difficulty'];
+  if (difficultyScore <= 3) difficulty = 'easy';
+  else if (difficultyScore <= 5) difficulty = 'moderate';
+  else if (difficultyScore <= 7) difficulty = 'hard';
+  else difficulty = 'very_hard';
+
+  // Estimate time to fill
+  const timeEstimates = {
+    easy: '2-3 weeks',
+    moderate: '4-6 weeks',
+    hard: '6-10 weeks',
+    very_hard: '10+ weeks (consider adjusting requirements)',
+  };
+
+  return {
+    difficulty,
+    difficultyScore,
+    calibrationNotes,
+    marketInsights: {
+      salaryAssessment: job.salaryMin && job.salaryMax
+        ? (hasCompetitiveSalary ? 'Competitive range for this level' : 'May be below market for senior talent')
+        : null,
+      skillDemand: skillCount > 8
+        ? 'Combination of skills is rare in the market'
+        : 'Skills are commonly found in market',
+      locationImpact: isRemote
+        ? 'Remote option maximizes candidate pool globally'
+        : `${job.location || 'Specified location'} requirement limits to regional candidates`,
+      experienceMatch: job.minYearsExperience >= 8
+        ? 'Senior-level experience requirement aligns with expectations'
+        : 'Experience requirement is reasonable for this level',
+    },
+    redFlags,
+    suggestions,
+    timeToFillEstimate: timeEstimates[difficulty],
+  };
+}
+
+// ============================================
+// QUICK ROLE CALIBRATION - Fast business rules without AI
+// Use this for immediate feedback in Phase 1 before AI calibration
+// ============================================
+export function quickRoleCalibration(job: Job): RoleCalibration {
+  let difficultyScore = 5; // Start at moderate
+  const redFlags: string[] = [];
+  const suggestions: string[] = [];
+  const calibrationNotes: string[] = [];
+
+  const titleLower = job.title.toLowerCase();
+  const skillCount = job.mustHaveSkills.length;
+  const isRemote = job.workMode === 'remote';
+  const minExp = job.minYearsExperience;
+  const salaryMax = job.salaryMax || 0;
+
+  // === BUSINESS RULE 1: Title vs Experience Mismatch ===
+  const isSeniorTitle = /senior|staff|principal|lead|architect|director|vp|head/i.test(titleLower);
+  const isJuniorTitle = /junior|entry|associate|intern/i.test(titleLower);
+  const isMidTitle = !isSeniorTitle && !isJuniorTitle;
+
+  if (isSeniorTitle && minExp < 5) {
+    difficultyScore += 2;
+    redFlags.push(`Senior title "${job.title}" typically requires 5+ years, but only ${minExp} specified`);
+    suggestions.push('Consider increasing experience requirement to 5+ years for credibility');
+  }
+  if (isJuniorTitle && minExp > 3) {
+    difficultyScore += 1;
+    redFlags.push(`Junior title with ${minExp} years experience is contradictory`);
+    suggestions.push('Consider adjusting title to match experience level');
+  }
+
+  // === BUSINESS RULE 2: Salary vs Seniority Mismatch ===
+  // 2024 tech market benchmarks (rough)
+  if (salaryMax > 0) {
+    if (isSeniorTitle && salaryMax < 150000) {
+      difficultyScore += 2;
+      redFlags.push(`Senior role salary ($${(salaryMax / 1000).toFixed(0)}k max) is below market for experienced talent`);
+      suggestions.push('Consider raising salary range to $150k+ to attract senior candidates');
+    }
+    if (isJuniorTitle && salaryMax > 120000) {
+      calibrationNotes.push(`Junior salary ($${(salaryMax / 1000).toFixed(0)}k) is above typical market - great for attracting talent`);
+      difficultyScore -= 1;
+    }
+    if (isMidTitle && salaryMax < 100000) {
+      calibrationNotes.push('Mid-level salary may limit candidate pool in competitive markets');
+    }
+  } else {
+    calibrationNotes.push('No salary range specified - candidates may not apply');
+    suggestions.push('Adding a salary range can increase application rates by 30%+');
+  }
+
+  // === BUSINESS RULE 3: Too Many Must-Haves ===
+  if (skillCount > 10) {
+    difficultyScore += 2;
+    redFlags.push(`${skillCount} must-have skills is unrealistic - narrows pool to near zero`);
+    suggestions.push('Move 3-5 skills to "nice-to-have" to widen candidate pool');
+  } else if (skillCount > 7) {
+    difficultyScore += 1;
+    calibrationNotes.push(`${skillCount} must-have skills is on the higher end`);
+    suggestions.push('Consider whether all must-haves are truly required');
+  } else if (skillCount < 3) {
+    calibrationNotes.push('Few specific requirements may attract many unqualified applicants');
+  }
+
+  // === BUSINESS RULE 4: Location Impact ===
+  if (!isRemote && job.location) {
+    difficultyScore += 1;
+    calibrationNotes.push(`On-site requirement limits to ${job.location} area candidates`);
+    suggestions.push('Consider hybrid or remote options to expand pool');
+  } else if (isRemote) {
+    difficultyScore -= 1;
+    calibrationNotes.push('Remote option significantly expands candidate pool globally');
+  }
+
+  // === BUSINESS RULE 5: Sponsorship + Location Complexity ===
+  if (isRemote && job.requiresSponsorship === false) {
+    calibrationNotes.push('Remote + no sponsorship is optimal for wide candidate reach');
+  }
+  if (!isRemote && job.requiresSponsorship === true) {
+    difficultyScore += 1;
+    calibrationNotes.push('On-site with visa sponsorship creates legal and logistic complexity');
+  }
+
+  // === BUSINESS RULE 6: Experience Extremes ===
+  if (minExp >= 10) {
+    difficultyScore += 1;
+    calibrationNotes.push('10+ years requirement significantly narrows candidate pool');
+    suggestions.push('Consider if 7-8 years would suffice - opens more candidates');
+  }
+
+  // === BUSINESS RULE 7: Certifications ===
+  if (job.certifications && job.certifications.length > 2) {
+    difficultyScore += 1;
+    calibrationNotes.push(`${job.certifications.length} required certifications limits pool`);
+  }
+
+  // Clamp score
+  difficultyScore = Math.max(1, Math.min(10, difficultyScore));
+
+  // Determine difficulty level
+  let difficulty: RoleCalibration['difficulty'];
+  if (difficultyScore <= 3) difficulty = 'easy';
+  else if (difficultyScore <= 5) difficulty = 'moderate';
+  else if (difficultyScore <= 7) difficulty = 'hard';
+  else difficulty = 'very_hard';
+
+  // Time to fill estimates
+  const timeEstimates = {
+    easy: '2-3 weeks',
+    moderate: '4-6 weeks',
+    hard: '6-10 weeks',
+    very_hard: '10+ weeks (consider adjusting requirements)',
+  };
+
+  // Market supply estimate
+  let marketSupply = 'moderate';
+  if (difficultyScore <= 3) marketSupply = 'abundant';
+  else if (difficultyScore <= 5) marketSupply = 'moderate';
+  else if (difficultyScore <= 7) marketSupply = 'limited';
+  else marketSupply = 'scarce';
+
+  return {
+    difficulty,
+    difficultyScore,
+    difficultyRating: difficultyScore, // Alias for UI
+    marketSupply,
+    calibrationNotes,
+    marketInsights: {
+      salaryAssessment: salaryMax > 0
+        ? (salaryMax >= 150000 ? 'Competitive range' : (salaryMax >= 100000 ? 'Market rate' : 'Below market'))
+        : null,
+      skillDemand: skillCount > 8
+        ? 'Rare skill combination - competitive market'
+        : (skillCount > 5 ? 'Moderately specialized' : 'Common skills available'),
+      locationImpact: isRemote
+        ? 'Remote option maximizes global candidate pool'
+        : `${job.location || 'On-site'} limits to regional candidates`,
+      experienceMatch: isSeniorTitle && minExp >= 5
+        ? 'Experience aligns with title level'
+        : (isSeniorTitle && minExp < 5 ? 'Experience may be low for title' : 'Reasonable match'),
+    },
+    redFlags,
+    suggestions,
+    timeToFill: timeEstimates[difficulty],
+    timeToFillEstimate: timeEstimates[difficulty],
+  };
+}
+
+// ============================================
+// EMPLOYER BRANDING - Why candidates should care
+// ============================================
+export async function generateEmployerBranding(job: Job): Promise<EmployerBranding> {
+  const systemPrompt = `You are an expert Employer Branding Strategist. Your task is to create compelling messaging that will attract top talent to this role.
+
+### TASK
+Based on the job description, create:
+1. A main value proposition (1-2 sentences) that captures why a top candidate should be excited
+2. 3-5 specific selling points
+3. Key differentiators for this role/company
+4. Appeal points for different motivations (technical challenges, career growth, culture)
+5. Recommended outreach tone
+
+### GUIDELINES
+- Be specific to what's in the JD, not generic
+- Focus on impact, growth, and unique aspects
+- Avoid buzzwords like "fast-paced" or "rockstar"
+- Think about what would genuinely excite a passive candidate
+
+Return a JSON object:
+{
+  "valueProposition": "<compelling 1-2 sentence pitch>",
+  "sellingPoints": ["<specific point 1>", ...],
+  "differentiators": ["<what makes this unique>", ...],
+  "targetPersonaAppeal": {
+    "technicalAppeal": ["<appeals to technical interests>"],
+    "careerAppeal": ["<growth/advancement opportunities>"],
+    "cultureAppeal": ["<work environment/culture aspects>"]
+  },
+  "suggestedOutreachTone": "technical|career-growth|mission-driven|culture-focused"
+}`;
+
+  try {
+    const response = await callLLM(
+      'anthropic',
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `JOB DESCRIPTION:\n${job.rawDescription}` },
+      ],
+      true,
+      0.4
+    );
+
+    return JSON.parse(response);
+  } catch (error) {
+    console.error('Employer branding generation failed:', error);
+    return getDemoEmployerBranding(job);
+  }
+}
+
+export function getDemoEmployerBranding(job: Job): EmployerBranding {
+  return {
+    valueProposition: `Join ${job.company} as a ${job.title} and work on impactful problems with a team that values both technical excellence and work-life balance.`,
+    sellingPoints: [
+      `Opportunity to shape the ${job.title} function at a growing organization`,
+      `Work with modern tech stack: ${job.mustHaveSkills.slice(0, 3).join(', ') || 'cutting-edge technologies'}`,
+      `${job.workMode === 'remote' ? 'Fully remote position with flexible hours' : `${job.workMode} role in ${job.location || 'a great location'}`}`,
+      job.salaryMax ? `Competitive compensation up to $${job.salaryMax.toLocaleString()}` : 'Competitive compensation package',
+      'Collaborative team environment with mentorship opportunities',
+    ],
+    differentiators: [
+      `Direct impact on ${job.company}'s core product/mission`,
+      'Opportunity for technical leadership and growth',
+      'Modern engineering practices and tooling',
+    ],
+    targetPersonaAppeal: {
+      technicalAppeal: [
+        `Work with ${job.mustHaveSkills[0] || 'modern technologies'}`,
+        'Solve complex technical challenges at scale',
+        'Influence architectural decisions',
+      ],
+      careerAppeal: [
+        'Clear path to senior/lead positions',
+        'Cross-functional collaboration opportunities',
+        'Mentorship and learning budget',
+      ],
+      cultureAppeal: [
+        job.workMode === 'remote' ? 'Remote-first culture' : 'Collaborative office environment',
+        'Focus on work-life balance',
+        'Inclusive and diverse team',
+      ],
+    },
+    suggestedOutreachTone: job.minYearsExperience >= 8 ? 'technical' : 'career-growth',
+  };
+}
+
+// ============================================
+// IDEAL CANDIDATE PERSONA - Who we're looking for
+// ============================================
+export async function generateIdealCandidatePersona(job: Job): Promise<IdealCandidatePersona> {
+  const systemPrompt = `You are an expert Technical Recruiter building an Ideal Candidate Persona (ICP). Create a detailed profile of the perfect candidate for this role.
+
+### TASK
+Based on the job description, create a comprehensive persona that describes:
+1. Their current professional background (titles, companies, industries)
+2. What motivates them and what they're looking for in their next role
+3. Their skills and experience patterns
+4. Behavioral signals to look for during sourcing
+5. Outreach hooks that would resonate with them
+
+### GUIDELINES
+- Be specific to the role, not generic
+- Think about what a 90th percentile candidate for this role looks like
+- Consider both what they have (skills/experience) and what they want (motivations)
+- Include specific signals recruiters can look for on LinkedIn
+
+Return a JSON object:
+{
+  "backgroundProfile": {
+    "typicalTitles": ["<titles they'd currently hold>"],
+    "typicalCompanies": ["<types of companies, e.g., 'Series B-D startups', 'FAANG'>"],
+    "careerStage": "<e.g., 'Mid-career professional 5-8 years in, seeking senior IC track'>",
+    "industryBackground": ["<industries they'd have experience in>"]
+  },
+  "careerMotivations": {
+    "primaryDrivers": ["<what drives them, e.g., 'Technical challenge', 'Impact'>"],
+    "dealMakers": ["<what would make them say yes>"],
+    "dealBreakers": ["<what would make them decline>"]
+  },
+  "skillsProfile": {
+    "coreCompetencies": ["<must-have skills>"],
+    "adjacentSkills": ["<related skills they'd likely have>"],
+    "experiencePatterns": ["<e.g., 'Built systems serving 1M+ users'>"]
+  },
+  "behavioralIndicators": {
+    "linkedInSignals": ["<what to look for on their profile>"],
+    "resumePatterns": ["<what their resume would show>"],
+    "redFlags": ["<warning signs this isn't the right fit>"]
+  },
+  "outreachHooks": ["<conversation starters that would resonate>"]
+}`;
+
+  try {
+    const response = await callLLM(
+      'anthropic',
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `JOB DESCRIPTION:\n${job.rawDescription}\n\nROLE: ${job.title}\nCOMPANY: ${job.company}\nLOCATION: ${job.location || 'Remote'}\nEXPERIENCE REQUIRED: ${job.minYearsExperience}+ years\nMUST-HAVE SKILLS: ${job.mustHaveSkills.join(', ')}` },
+      ],
+      true,
+      0.5
+    );
+
+    return JSON.parse(response);
+  } catch (error) {
+    console.error('Persona generation failed:', error);
+    return getDemoIdealCandidatePersona(job);
+  }
+}
+
+export function getDemoIdealCandidatePersona(job: Job): IdealCandidatePersona {
+  const isSenior = job.minYearsExperience >= 7 || /senior|staff|principal|lead/i.test(job.title);
+  const isManager = /manager|director|head|vp/i.test(job.title);
+
+  return {
+    backgroundProfile: {
+      typicalTitles: isSenior
+        ? [`Senior ${job.title.replace(/senior\s*/i, '')}`, `Staff ${job.title.replace(/senior|staff\s*/i, '')}`, `Lead ${job.title.replace(/lead\s*/i, '')}`]
+        : [job.title, `${job.title} II`, `Junior ${job.title}`],
+      typicalCompanies: [
+        'Series B-D funded startups',
+        'Mid-size tech companies (500-2000 employees)',
+        'Tech divisions of large enterprises',
+      ],
+      careerStage: isSenior
+        ? `Experienced professional with ${job.minYearsExperience}+ years, seeking high-impact senior IC or early management role`
+        : `Early to mid-career professional looking to grow their ${job.mustHaveSkills[0] || 'technical'} expertise`,
+      industryBackground: ['Technology/Software', 'SaaS', 'Fintech', 'E-commerce'],
+    },
+    careerMotivations: {
+      primaryDrivers: isSenior
+        ? ['Technical leadership', 'Architectural impact', 'Mentoring others', 'Challenging problems']
+        : ['Learning and growth', 'Working with modern tech', 'Career advancement', 'Good mentorship'],
+      dealMakers: [
+        `Opportunity to work with ${job.mustHaveSkills[0] || 'cutting-edge technology'}`,
+        job.workMode === 'remote' ? 'Remote-first culture with flexibility' : `Great ${job.location} office with hybrid flexibility`,
+        isManager ? 'Team building and leadership scope' : 'Individual contributor track with growth',
+        job.salaryMax ? `Competitive compensation ($${Math.round(job.salaryMax / 1000)}k+)` : 'Competitive total compensation',
+      ],
+      dealBreakers: [
+        'Outdated tech stack with no modernization plans',
+        'No clear growth path or learning opportunities',
+        'Poor work-life balance / always-on culture',
+        job.requiresSponsorship === false ? 'Visa sponsorship required but not offered' : 'Inflexible on compensation',
+      ],
+    },
+    skillsProfile: {
+      coreCompetencies: job.mustHaveSkills.slice(0, 5),
+      adjacentSkills: job.niceToHaveSkills.slice(0, 4),
+      experiencePatterns: [
+        `${job.minYearsExperience}+ years in ${job.mustHaveSkills[0] || 'relevant'} development`,
+        isSenior ? 'Led technical initiatives or mentored junior developers' : 'Contributed to production systems',
+        'Experience with agile/scrum methodologies',
+        'Track record of shipping features end-to-end',
+      ],
+    },
+    behavioralIndicators: {
+      linkedInSignals: [
+        `Current title includes: ${job.mustHaveSkills[0] || job.title}`,
+        'Profile shows progression (promotions or increased scope)',
+        'Endorsements for key skills from colleagues',
+        'Active engagement (posts, comments) on technical topics',
+      ],
+      resumePatterns: [
+        'Quantified achievements (metrics, scale, impact)',
+        'Progressive responsibility across roles',
+        `Technology stack overlap with ${job.mustHaveSkills.slice(0, 3).join(', ')}`,
+        'Side projects or open source contributions (bonus)',
+      ],
+      redFlags: [
+        'Job hopping with tenures under 1 year consistently',
+        'No progression in responsibilities over 3+ years',
+        'Skills listed but no context of application',
+        'Gaps without explanation or unrelated roles recently',
+      ],
+    },
+    outreachHooks: [
+      `I noticed your experience with ${job.mustHaveSkills[0]} at [their company] - we're solving similar challenges at ${job.company}`,
+      `Your background in [their industry] caught my attention - we're looking for someone who's built ${job.mustHaveSkills[1] || 'scalable systems'} before`,
+      `I see you've been at [company] for X years - curious if you're open to exploring a ${isSenior ? 'senior IC' : 'growth'} opportunity?`,
+      `${job.company} is building [brief product pitch] and your ${job.mustHaveSkills[0]} expertise would be a great fit`,
+    ],
+  };
+}
+
+// ============================================
+// SOURCING RED FLAGS - Patterns to watch during sourcing
+// ============================================
+export async function generateSourcingRedFlags(job: Job): Promise<SourcingRedFlags> {
+  const systemPrompt = `You are an expert Technical Recruiter. Based on the job requirements, identify patterns and signals that would indicate a candidate is NOT a good fit, even if their resume looks good at first glance.
+
+### TASK
+Generate red flags and warning signals specific to THIS role that recruiters should watch for when sourcing candidates.
+
+Return a JSON object:
+{
+  "patternsToAvoid": ["<profile patterns that suggest misfit>"],
+  "warningSignals": ["<resume/profile signals to be cautious about>"],
+  "dealBreakerIndicators": ["<immediate disqualifiers>"],
+  "industryMismatches": ["<industries that may not transfer well>"]
+}`;
+
+  try {
+    const response = await callLLM(
+      'anthropic',
+      [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: `JOB REQUIREMENTS:\nTitle: ${job.title}\nMust-Have: ${job.mustHaveSkills.join(', ')}\nDeal Breakers: ${job.dealBreakers?.join(', ') || 'None'}\n\nFULL JD:\n${job.rawDescription}` },
+      ],
+      true,
+      0.3
+    );
+
+    return JSON.parse(response);
+  } catch (error) {
+    console.error('Sourcing red flags generation failed:', error);
+    return getDemoSourcingRedFlags(job);
+  }
+}
+
+export function getDemoSourcingRedFlags(job: Job): SourcingRedFlags {
+  return {
+    patternsToAvoid: [
+      'Candidates with only agency/consulting background if looking for product experience',
+      'Profiles that emphasize management over hands-on work (if IC role)',
+      'Career trajectory that shows declining seniority',
+    ],
+    warningSignals: [
+      'Multiple positions under 1 year in the last 5 years',
+      'Gaps between roles without explanation',
+      'Skills listed without project context',
+      'Vague job descriptions that hide actual contributions',
+    ],
+    dealBreakerIndicators: job.dealBreakers?.length ? job.dealBreakers : [
+      'No relevant experience in core must-have skills',
+      'Location incompatibility (if on-site required)',
+      'Sponsorship needed when not offered',
+    ],
+    industryMismatches: [
+      'Pure academic/research background for fast-paced product role',
+      'Government/defense contractors if fast iteration is needed',
+      'Early-stage startup background if role needs process discipline',
+    ],
+  };
+}
+
+// ============================================
+// RESUME QUALITY - Assess parsing quality and completeness
+// ============================================
+export function assessResumeQuality(
+  candidate: Candidate,
+  rawResume: string
+): ResumeQuality {
+  const completeness = {
+    hasName: candidate.name !== 'Unknown Candidate' && candidate.name.length > 2,
+    hasEmail: !!candidate.email,
+    hasPhone: !!candidate.phone,
+    hasLocation: !!candidate.location,
+    hasCurrentTitle: !!candidate.currentJobTitle,
+    hasWorkHistory: rawResume.length > 500 && /\b(experience|work|employment|history)\b/i.test(rawResume),
+    hasDates: /\b(20\d{2}|19\d{2})\b/.test(rawResume),
+    hasSkills: /\b(skills?|technologies|proficient|expertise)\b/i.test(rawResume),
+  };
+
+  const missingFields: string[] = [];
+  if (!completeness.hasName) missingFields.push('Name');
+  if (!completeness.hasEmail) missingFields.push('Email');
+  if (!completeness.hasPhone) missingFields.push('Phone');
+  if (!completeness.hasLocation) missingFields.push('Location');
+  if (!completeness.hasCurrentTitle) missingFields.push('Current Title');
+  if (!completeness.hasWorkHistory) missingFields.push('Work History');
+  if (!completeness.hasDates) missingFields.push('Employment Dates');
+
+  const warnings: string[] = [];
+
+  // Check for PDF artifacts
+  if (/obj|endobj|stream|<<|>>/i.test(rawResume)) {
+    warnings.push('Resume may contain PDF parsing artifacts');
+  }
+
+  // Check for very short content
+  if (rawResume.length < 300) {
+    warnings.push('Resume content is unusually short');
+  }
+
+  // Check for inconsistent dates
+  const years = rawResume.match(/\b(20\d{2}|19\d{2})\b/g);
+  if (years && years.length > 0) {
+    const sortedYears = years.map(Number).sort((a, b) => a - b);
+    if (sortedYears[sortedYears.length - 1] - sortedYears[0] > 40) {
+      warnings.push('Date range in resume spans over 40 years - verify accuracy');
+    }
+  }
+
+  // Calculate score
+  const fieldScores = Object.values(completeness);
+  const trueCount = fieldScores.filter(Boolean).length;
+  const baseScore = (trueCount / fieldScores.length) * 100;
+  const warningPenalty = warnings.length * 10;
+  const score = Math.max(0, Math.min(100, Math.round(baseScore - warningPenalty)));
+
+  // Determine level
+  let level: ResumeQuality['level'];
+  if (score >= 80) level = 'high';
+  else if (score >= 50) level = 'medium';
+  else level = 'low';
+
+  // Calculate parse confidence
+  const parseConfidence = Math.round(
+    (completeness.hasName ? 30 : 0) +
+    (completeness.hasWorkHistory ? 30 : 0) +
+    (completeness.hasDates ? 20 : 0) +
+    (warnings.length === 0 ? 20 : 10)
+  );
+
+  return {
+    score,
+    level,
+    completeness,
+    missingFields,
+    warnings,
+    parseConfidence,
+  };
+}
+
+// ============================================
+// EVALUATION CONFIDENCE - How certain is the AI evaluation
+// ============================================
+export function assessEvaluationConfidence(
+  candidate: Candidate,
+  resumeQuality: ResumeQuality
+): EvaluationConfidence {
+  const evaluation = candidate.evaluation;
+
+  // Assess individual factors
+  const resumeQualityLevel: EvaluationConfidence['factors']['resumeQuality'] =
+    resumeQuality.level === 'high' ? 'high' : resumeQuality.level === 'medium' ? 'medium' : 'low';
+
+  const skillMatchClarity: EvaluationConfidence['factors']['skillMatchClarity'] =
+    evaluation?.requirementsMatch?.mustHaveDetails?.every(d => d.evidence !== 'Not demonstrated in resume')
+      ? 'high'
+      : evaluation?.requirementsMatch?.mustHaveDetails?.some(d => d.evidence !== 'Not demonstrated in resume')
+        ? 'medium'
+        : 'low';
+
+  const experienceVerifiability: EvaluationConfidence['factors']['experienceVerifiability'] =
+    resumeQuality.completeness.hasDates && resumeQuality.completeness.hasWorkHistory
+      ? 'high'
+      : resumeQuality.completeness.hasWorkHistory
+        ? 'medium'
+        : 'low';
+
+  const dataCompleteness: EvaluationConfidence['factors']['dataCompleteness'] =
+    resumeQuality.missingFields.length <= 1
+      ? 'high'
+      : resumeQuality.missingFields.length <= 3
+        ? 'medium'
+        : 'low';
+
+  // Calculate overall confidence
+  const levelScores = { high: 3, medium: 2, low: 1 };
+  const avgScore = (
+    levelScores[resumeQualityLevel] +
+    levelScores[skillMatchClarity] +
+    levelScores[experienceVerifiability] +
+    levelScores[dataCompleteness]
+  ) / 4;
+
+  const overall: EvaluationConfidence['overall'] =
+    avgScore >= 2.5 ? 'high' : avgScore >= 1.75 ? 'medium' : 'low';
+
+  const score = Math.round((avgScore / 3) * 100);
+
+  // Generate caveats
+  const caveats: string[] = [];
+  if (resumeQualityLevel === 'low') caveats.push('Resume parsing quality is low - verify key details manually');
+  if (skillMatchClarity === 'low') caveats.push('Limited evidence for skill claims - deeper verification needed');
+  if (!resumeQuality.completeness.hasDates) caveats.push('Employment dates not clear - timeline may be inaccurate');
+  if (resumeQuality.warnings.length > 0) caveats.push(...resumeQuality.warnings);
+
+  return {
+    overall,
+    score,
+    factors: {
+      resumeQuality: resumeQualityLevel,
+      skillMatchClarity,
+      experienceVerifiability,
+      dataCompleteness,
+    },
+    caveats,
+  };
+}
+
+// ============================================
+// CONSTRAINT MATCHING - Check how well candidate matches constraints
+// ============================================
+export function assessConstraintMatch(candidate: Candidate, job: Job): ConstraintMatch {
+  // Location matching
+  const locationStatus = (() => {
+    if (!job.location || job.workMode === 'remote') return 'match' as const;
+    if (!candidate.location) return 'unknown' as const;
+    const jobLoc = job.location.toLowerCase();
+    const candLoc = candidate.location.toLowerCase();
+    if (candLoc.includes(jobLoc) || jobLoc.includes(candLoc)) return 'match' as const;
+    // Check for same state/region
+    const jobState = jobLoc.split(',').pop()?.trim();
+    const candState = candLoc.split(',').pop()?.trim();
+    if (jobState && candState && jobState === candState) return 'partial' as const;
+    return 'mismatch' as const;
+  })();
+
+  // Work mode matching
+  const workModeStatus = (() => {
+    if (job.workMode === 'remote') return 'match' as const;
+    if (!candidate.location) return 'unknown' as const;
+    return locationStatus === 'match' ? 'match' as const : 'partial' as const;
+  })();
+
+  // Sponsorship matching
+  const sponsorshipStatus = (() => {
+    if (job.requiresSponsorship === null) return 'unknown' as const;
+    if (candidate.requiresSponsorship === null) return 'unknown' as const;
+    if (!job.requiresSponsorship && candidate.requiresSponsorship) return 'mismatch' as const;
+    return 'match' as const;
+  })();
+
+  // Experience matching
+  const experienceStatus = (() => {
+    if (!candidate.yearsExperience) return 'unknown' as const;
+    if (candidate.yearsExperience >= job.minYearsExperience) return 'match' as const;
+    if (candidate.yearsExperience >= job.minYearsExperience - 2) return 'partial' as const;
+    return 'mismatch' as const;
+  })();
+
+  return {
+    location: {
+      status: locationStatus,
+      candidateLocation: candidate.location,
+      jobLocation: job.location,
+      notes: locationStatus === 'match' ? 'Location compatible' :
+        locationStatus === 'mismatch' ? 'Location mismatch - verify flexibility' :
+          'Location unknown',
+    },
+    workMode: {
+      status: workModeStatus,
+      candidatePreference: null, // Would need to extract from resume
+      jobRequirement: job.workMode,
+      notes: job.workMode === 'remote' ? 'Remote role - location flexible' :
+        `${job.workMode} role in ${job.location || 'specified location'}`,
+    },
+    sponsorship: {
+      status: sponsorshipStatus,
+      candidateNeeds: candidate.requiresSponsorship,
+      companyOffers: job.requiresSponsorship,
+      notes: sponsorshipStatus === 'mismatch' ? 'Candidate needs sponsorship but company does not offer' :
+        sponsorshipStatus === 'match' ? 'Sponsorship requirements aligned' :
+          'Sponsorship status unclear',
+    },
+    salary: {
+      status: 'unknown',
+      candidateExpectation: null,
+      jobRange: { min: job.salaryMin, max: job.salaryMax },
+      notes: job.salaryMin && job.salaryMax
+        ? `Role offers $${job.salaryMin.toLocaleString()} - $${job.salaryMax.toLocaleString()}`
+        : 'Salary range not specified',
+    },
+    experience: {
+      status: experienceStatus === 'unknown' ? 'partial' : experienceStatus,
+      candidateYears: candidate.yearsExperience,
+      requiredYears: job.minYearsExperience,
+      notes: experienceStatus === 'match' ? 'Experience meets requirements' :
+        experienceStatus === 'partial' ? 'Slightly under required experience' :
+          experienceStatus === 'mismatch' ? 'Below minimum experience requirement' :
+            'Experience not determined',
+    },
+  };
+}
+
+// ============================================
+// CAREER TIMELINE - Build enhanced timeline with gap detection
+// ============================================
+export function buildCareerTimeline(evaluation: CandidateEvaluation | null): CareerTimeline {
+  if (!evaluation?.careerJourney || evaluation.careerJourney.length === 0) {
+    return {
+      entries: [],
+      gaps: [],
+      totalYearsExperience: 0,
+      averageTenure: 0,
+      longestTenure: 0,
+      isJobHopper: false,
+      careerProgression: 'unclear',
+    };
+  }
+
+  const entries: CareerTimeline['entries'] = [];
+  const gaps: EmploymentGap[] = [];
+  const currentYear = new Date().getFullYear();
+
+  // Sort by start year descending
+  const sortedJourney = [...(evaluation.careerJourney as Array<{
+    company: string;
+    role: string;
+    startYear: number;
+    endYear: number | 'Present';
+    type: string;
+  }>)].sort((a, b) => {
+    const aEnd = a.endYear === 'Present' ? currentYear : a.endYear;
+    const bEnd = b.endYear === 'Present' ? currentYear : b.endYear;
+    return bEnd - aEnd;
+  });
+
+  let prevStartYear: number | null = null;
+
+  sortedJourney.forEach((role) => {
+    const endYear = role.endYear === 'Present' ? currentYear : role.endYear;
+    const durationMonths = (endYear - role.startYear) * 12;
+
+    entries.push({
+      company: role.company,
+      role: role.role,
+      startYear: role.startYear,
+      endYear: role.endYear,
+      type: role.type as CareerTimeline['entries'][0]['type'],
+      durationMonths,
+      isCurrentRole: role.endYear === 'Present',
+    });
+
+    // Detect gaps
+    if (prevStartYear !== null && role.endYear !== 'Present') {
+      const gapMonths = (prevStartYear - endYear) * 12;
+      if (gapMonths > 3) { // More than 3 months gap
+        gaps.push({
+          startDate: `${endYear}`,
+          endDate: `${prevStartYear}`,
+          durationMonths: gapMonths,
+          significance: gapMonths < 6 ? 'minor' : gapMonths < 12 ? 'notable' : 'significant',
+        });
+      }
+    }
+
+    prevStartYear = role.startYear;
+  });
+
+  // Calculate stats
+  const tenures = entries.map(e => e.durationMonths);
+  const totalMonths = tenures.reduce((a, b) => a + b, 0);
+  const averageTenure = tenures.length > 0 ? Math.round(totalMonths / tenures.length) : 0;
+  const longestTenure = tenures.length > 0 ? Math.max(...tenures) : 0;
+  const isJobHopper = averageTenure < 18 && entries.length >= 3;
+
+  // Determine career progression
+  let careerProgression: CareerTimeline['careerProgression'] = 'unclear';
+  const growthCount = entries.filter(e => e.type === 'Growth').length;
+  const pivotCount = entries.filter(e => e.type === 'Pivot').length;
+  if (growthCount > entries.length / 2) careerProgression = 'upward';
+  else if (pivotCount > entries.length / 2) careerProgression = 'mixed';
+  else if (entries.length > 0) careerProgression = 'lateral';
+
+  return {
+    entries,
+    gaps,
+    totalYearsExperience: Math.round(totalMonths / 12),
+    averageTenure,
+    longestTenure,
+    isJobHopper,
+    careerProgression,
+  };
 }

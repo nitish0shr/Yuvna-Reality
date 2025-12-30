@@ -1,0 +1,22 @@
+Job Title: Senior Software Engineer
+Company: TechStartup Inc.
+Location: San Francisco, CA (Remote OK)
+
+About the Role:
+We are looking for a Senior Software Engineer to join our team. You will work on building scalable backend systems.
+
+Requirements:
+- 5+ years of software engineering experience
+- Experience with TypeScript, Node.js, and cloud platforms (AWS preferred)
+- Strong problem-solving skills
+- Experience working in fast-paced environments
+
+Nice to Have:
+- Experience with React
+- Familiarity with CI/CD pipelines
+- Leadership experience
+
+Benefits:
+- Competitive salary ($150k - $200k)
+- Full benefits
+- Remote work options

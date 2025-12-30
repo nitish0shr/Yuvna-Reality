@@ -296,6 +296,15 @@ export interface CandidateEvaluation {
 
   // Personalized screening script for recruiters
   screeningScript?: ScreeningScript;
+
+  // Career journey for timeline visualization
+  careerJourney?: Array<{
+    company: string;
+    role: string;
+    startYear: number;
+    endYear: number | 'Present';
+    type: 'Growth' | 'Pivot' | 'Tenure';
+  }>;
 }
 
 // ============================================
@@ -450,6 +459,223 @@ export interface EnhancedIntake {
 }
 
 // ============================================
+// ROLE CALIBRATION - Market sense and difficulty assessment
+// ============================================
+export type RoleDifficulty = 'easy' | 'moderate' | 'hard' | 'very_hard';
+
+export interface RoleCalibration {
+  difficulty: RoleDifficulty;
+  difficultyScore: number; // 1-10
+  difficultyRating?: number; // Alias for difficultyScore (for UI compatibility)
+  marketSupply?: string; // "abundant" | "moderate" | "limited" | "scarce"
+  calibrationNotes: string[];
+  marketInsights: {
+    salaryAssessment: string | null; // e.g., "Below market for this experience level"
+    skillDemand: string; // e.g., "High demand skills, competitive market"
+    locationImpact: string; // e.g., "Remote option significantly increases candidate pool"
+    experienceMatch: string; // e.g., "Experience requirements align with title level"
+  };
+  redFlags: string[]; // e.g., ["Senior expectations with junior salary range"]
+  suggestions: string[]; // e.g., ["Consider raising salary range by 15-20%"]
+  timeToFill?: string; // Alias for timeToFillEstimate
+  timeToFillEstimate: string; // e.g., "4-6 weeks with current requirements"
+}
+
+// ============================================
+// EMPLOYER BRANDING - Why candidates should care
+// ============================================
+export interface EmployerBranding {
+  valueProposition: string; // Main pitch for why this role is compelling
+  sellingPoints: string[]; // 3-5 key reasons to join
+  differentiators: string[]; // What makes this role/company unique
+  targetPersonaAppeal: {
+    technicalAppeal: string[]; // For engineering roles
+    careerAppeal: string[]; // Growth opportunities
+    cultureAppeal: string[]; // Work environment
+  };
+  suggestedOutreachTone: 'technical' | 'career-growth' | 'mission-driven' | 'culture-focused';
+}
+
+// ============================================
+// IDEAL CANDIDATE PERSONA - Who we're looking for
+// ============================================
+export interface IdealCandidatePersona {
+  // Background profile
+  backgroundProfile: {
+    typicalTitles: string[]; // Current/recent titles they'd hold
+    typicalCompanies: string[]; // Types of companies they'd come from
+    careerStage: string; // e.g., "Mid-career professional seeking senior IC role"
+    industryBackground: string[]; // Industries they'd have experience in
+  };
+
+  // Career motivations - what would attract them
+  careerMotivations: {
+    primaryDrivers: string[]; // e.g., "Technical challenge", "Career growth", "Impact"
+    dealMakers: string[]; // What would make them say yes
+    dealBreakers: string[]; // What would make them decline
+  };
+
+  // Skills & experience profile
+  skillsProfile: {
+    coreCompetencies: string[]; // Must-have technical skills
+    adjacentSkills: string[]; // Related skills they'd likely have
+    experiencePatterns: string[]; // e.g., "Built systems from scratch", "Led small teams"
+  };
+
+  // Behavioral indicators
+  behavioralIndicators: {
+    linkedInSignals: string[]; // What to look for on their profile
+    resumePatterns: string[]; // What their resume would show
+    redFlags: string[]; // Warning signs this isn't the right persona
+  };
+
+  // Outreach personalization
+  outreachHooks: string[]; // Conversation starters that would resonate
+}
+
+// ============================================
+// SOURCING RED FLAGS - Patterns to watch during sourcing
+// ============================================
+export interface SourcingRedFlags {
+  patternsToAvoid: string[]; // e.g., "Candidates with only agency/consulting background"
+  warningSignals: string[]; // e.g., "Short tenures under 1 year at multiple companies"
+  dealBreakerIndicators: string[]; // e.g., "No hands-on experience in last 3 years"
+  industryMismatches: string[]; // Industries that might not transfer well
+}
+
+// ============================================
+// RESUME QUALITY - Parsing confidence and completeness
+// ============================================
+export interface ResumeQuality {
+  score: number; // 0-100
+  level: 'high' | 'medium' | 'low';
+  completeness: {
+    hasName: boolean;
+    hasEmail: boolean;
+    hasPhone: boolean;
+    hasLocation: boolean;
+    hasCurrentTitle: boolean;
+    hasWorkHistory: boolean;
+    hasDates: boolean;
+    hasSkills: boolean;
+  };
+  missingFields: string[];
+  warnings: string[]; // e.g., "Dates are inconsistent", "PDF contains artifacts"
+  parseConfidence: number; // How confident we are in the parsing accuracy
+}
+
+// ============================================
+// EMPLOYMENT GAP - Gap detection in career history
+// ============================================
+export interface EmploymentGap {
+  startDate: string;
+  endDate: string;
+  durationMonths: number;
+  significance: 'minor' | 'notable' | 'significant'; // <3mo, 3-6mo, >6mo
+  potentialReasons?: string; // Inferred if possible
+}
+
+// ============================================
+// CANDIDATE COMPARISON - Side-by-side comparison
+// ============================================
+export interface CandidateComparison {
+  candidates: string[]; // Candidate IDs being compared
+  comparisonData: {
+    candidateId: string;
+    name: string;
+    score: number;
+    recommendation: string;
+    keyStrengths: string[];
+    keyGaps: string[];
+    yearsExperience: number | null;
+    currentCompany: string | null;
+    locationMatch: boolean;
+    salaryFit: 'unknown' | 'likely_fit' | 'likely_high' | 'likely_low';
+    sponsorshipStatus: 'not_needed' | 'needed' | 'unknown';
+  }[];
+  winner: string | null; // Best candidate ID
+  analysis: string; // Summary comparison
+}
+
+// ============================================
+// CONSTRAINT MATCH - Explicit constraint checking
+// ============================================
+export interface ConstraintMatch {
+  location: {
+    status: 'match' | 'partial' | 'mismatch' | 'unknown';
+    candidateLocation: string | null;
+    jobLocation: string | null;
+    notes: string;
+  };
+  workMode: {
+    status: 'match' | 'partial' | 'mismatch' | 'unknown';
+    candidatePreference: string | null;
+    jobRequirement: string;
+    notes: string;
+  };
+  sponsorship: {
+    status: 'match' | 'mismatch' | 'unknown';
+    candidateNeeds: boolean | null;
+    companyOffers: boolean | null;
+    notes: string;
+  };
+  salary: {
+    status: 'match' | 'partial' | 'mismatch' | 'unknown';
+    candidateExpectation: number | null;
+    jobRange: { min: number | null; max: number | null };
+    notes: string;
+  };
+  experience: {
+    status: 'match' | 'partial' | 'mismatch';
+    candidateYears: number | null;
+    requiredYears: number;
+    notes: string;
+  };
+}
+
+// ============================================
+// EVALUATION CONFIDENCE - How certain is the AI
+// ============================================
+export type ConfidenceLevel = 'high' | 'medium' | 'low';
+
+export interface EvaluationConfidence {
+  overall: ConfidenceLevel;
+  score: number; // 0-100
+  factors: {
+    resumeQuality: ConfidenceLevel;
+    skillMatchClarity: ConfidenceLevel;
+    experienceVerifiability: ConfidenceLevel;
+    dataCompleteness: ConfidenceLevel;
+  };
+  caveats: string[]; // e.g., "Limited work history details"
+}
+
+// ============================================
+// CAREER TIMELINE - Enhanced timeline with gaps
+// ============================================
+export interface CareerTimelineEntry {
+  company: string;
+  role: string;
+  startYear: number;
+  startMonth?: number;
+  endYear: number | 'Present';
+  endMonth?: number;
+  type: 'Growth' | 'Pivot' | 'Tenure' | 'Gap';
+  durationMonths: number;
+  isCurrentRole: boolean;
+}
+
+export interface CareerTimeline {
+  entries: CareerTimelineEntry[];
+  gaps: EmploymentGap[];
+  totalYearsExperience: number;
+  averageTenure: number; // In months
+  longestTenure: number; // In months
+  isJobHopper: boolean;
+  careerProgression: 'upward' | 'lateral' | 'mixed' | 'unclear';
+}
+
+// ============================================
 // SEARCH STRATEGY - LinkedIn sourcing strategy
 // ============================================
 export interface TargetCompanyTier {
@@ -494,3 +720,31 @@ export interface SearchStrategy {
   // Generated timestamp
   generatedAt: Date;
 }
+
+// ============================================
+// LLM & AI TYPES
+// ============================================
+export type LLMProvider = 'openai' | 'anthropic' | 'gemini';
+
+export interface MultiLLMResult<T> {
+  provider: LLMProvider;
+  result: T | null;
+  error: string | null;
+}
+
+export interface MultiLLMJobAnalysis {
+  combinedJob: Partial<Job>;
+  providerResults: MultiLLMResult<Partial<Job>>[];
+  confidence: {
+    title: number;
+    skills: number;
+    overall: number;
+  };
+}
+
+export type MultiLLMAnalysisState = MultiLLMJobAnalysis;
+
+// ============================================
+// APP PHASE
+// ============================================
+export type Phase = 'upload-job' | 'analyze-job' | 'upload-candidates' | 'results';

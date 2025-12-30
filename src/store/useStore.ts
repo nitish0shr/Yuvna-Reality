@@ -1,32 +1,35 @@
 import { create } from 'zustand';
-import { persist } from 'zustand/middleware';
-import type { Job, Candidate, CandidateStatus, EnhancedIntake, SearchStrategy } from '../types';
-
-type Phase = 'upload-job' | 'analyze-job' | 'upload-candidates' | 'results';
+import { persist, createJSONStorage } from 'zustand/middleware';
+import {
+  Candidate,
+  SearchStrategy,
+  Job,
+  EnhancedIntake,
+  RoleCalibration,
+  MultiLLMAnalysisState,
+  LLMProvider,
+  Phase,
+  CandidateStatus
+} from '../types';
 
 interface AppState {
-  // Current phase
-  phase: Phase;
-  setPhase: (phase: Phase) => void;
-
-  // Current job being worked on
-  currentJob: Job | null;
-  setCurrentJob: (job: Job | null) => void;
-  updateCurrentJob: (updates: Partial<Job>) => void;
-
-  // Enhanced intake (structured form from JD)
-  enhancedIntake: EnhancedIntake | null;
-  setEnhancedIntake: (intake: EnhancedIntake | null) => void;
-  updateEnhancedIntake: (updates: Partial<EnhancedIntake>) => void;
-
-  // Search strategy (LinkedIn sourcing strategy)
-  searchStrategy: SearchStrategy | null;
-  setSearchStrategy: (strategy: SearchStrategy | null) => void;
-  isGeneratingStrategy: boolean;
-  setGeneratingStrategy: (value: boolean) => void;
-
-  // Candidates for current job
+  // Core Data
   candidates: Candidate[];
+  searchStrategy: SearchStrategy | null; // User snippet called this sourcingStrategy, but types has SearchStrategy
+  sourcingStrategy: SearchStrategy | null; // Alias for compatibility if needed
+  currentJob: Job | null;
+  enhancedIntake: EnhancedIntake | null;
+  roleCalibration: RoleCalibration | null;
+  multiLLMAnalysis: MultiLLMAnalysisState | null;
+
+  // UI State
+  isAnalyzing: boolean;
+  isGeneratingStrategy: boolean;
+  isEvaluatingAll: boolean;
+  selectedLLM: LLMProvider;
+  phase: Phase;
+
+  // Actions
   addCandidate: (candidate: Candidate) => void;
   updateCandidate: (id: string, updates: Partial<Candidate>) => void;
   removeCandidate: (id: string) => void;
@@ -35,22 +38,37 @@ interface AppState {
   updateCandidateStatus: (id: string, status: CandidateStatus) => void;
   reorderCandidates: (orderedIds: string[]) => void;
 
-  // Evaluation state
-  isEvaluatingAll: boolean;
-  setEvaluatingAll: (value: boolean) => void;
+  setSearchStrategy: (strategy: SearchStrategy | null) => void;
+  setGeneratingStrategy: (value: boolean) => void;
 
-  // Reset everything
+  setCurrentJob: (job: Job | null) => void;
+  updateCurrentJob: (updates: Partial<Job>) => void;
+  setEnhancedIntake: (intake: EnhancedIntake | null) => void;
+  setRoleCalibration: (calibration: RoleCalibration | null) => void;
+  setMultiLLMAnalysis: (analysis: MultiLLMAnalysisState | null) => void;
+
+  setIsAnalyzing: (isAnalyzing: boolean) => void;
+  setEvaluatingAll: (value: boolean) => void;
+  setSelectedLLM: (llm: LLMProvider) => void;
+  setPhase: (phase: Phase) => void;
+
   reset: () => void;
+  resetAll: () => void; // User requested this name
 }
 
 const initialState = {
-  phase: 'upload-job' as Phase,
-  currentJob: null as Job | null,
-  enhancedIntake: null as EnhancedIntake | null,
-  searchStrategy: null as SearchStrategy | null,
+  candidates: [],
+  searchStrategy: null,
+  sourcingStrategy: null,
+  currentJob: null,
+  enhancedIntake: null,
+  roleCalibration: null,
+  multiLLMAnalysis: null,
+  isAnalyzing: false,
   isGeneratingStrategy: false,
-  candidates: [] as Candidate[],
   isEvaluatingAll: false,
+  selectedLLM: 'anthropic' as LLMProvider,
+  phase: 'upload-job' as Phase,
 };
 
 export const useStore = create<AppState>()(
@@ -58,41 +76,13 @@ export const useStore = create<AppState>()(
     (set) => ({
       ...initialState,
 
-      setPhase: (phase) => set({ phase }),
-
-      setCurrentJob: (job) => set({ currentJob: job }),
-
-      updateCurrentJob: (updates) =>
-        set((state) => ({
-          currentJob: state.currentJob
-            ? { ...state.currentJob, ...updates, updatedAt: new Date() }
-            : null,
-        })),
-
-      // Enhanced intake setters
-      setEnhancedIntake: (intake) => set({ enhancedIntake: intake }),
-
-      updateEnhancedIntake: (updates) =>
-        set((state) => ({
-          enhancedIntake: state.enhancedIntake
-            ? { ...state.enhancedIntake, ...updates }
-            : null,
-        })),
-
-      // Search strategy setters
-      setSearchStrategy: (strategy) => set({ searchStrategy: strategy }),
-
-      setGeneratingStrategy: (isGeneratingStrategy) => set({ isGeneratingStrategy }),
-
       addCandidate: (candidate) =>
-        set((state) => ({
-          candidates: [...state.candidates, candidate],
-        })),
+        set((state) => ({ candidates: [...state.candidates, candidate] })),
 
       updateCandidate: (id, updates) =>
         set((state) => ({
           candidates: state.candidates.map((c) =>
-            c.id === id ? { ...c, ...updates, updatedAt: new Date() } : c
+            c.id === id ? { ...c, ...updates } : c
           ),
         })),
 
@@ -111,40 +101,66 @@ export const useStore = create<AppState>()(
       markReachedOut: (id) =>
         set((state) => ({
           candidates: state.candidates.map((c) =>
-            c.id === id ? { ...c, hasReachedOut: true, updatedAt: new Date() } : c
+            c.id === id ? { ...c, hasReachedOut: true } : c
           ),
         })),
 
       updateCandidateStatus: (id, status) =>
         set((state) => ({
           candidates: state.candidates.map((c) =>
-            c.id === id ? { ...c, status, updatedAt: new Date() } : c
+            c.id === id ? { ...c, status } : c
           ),
         })),
 
       reorderCandidates: (orderedIds) =>
         set((state) => {
-          const candidateMap = new Map(state.candidates.map((c) => [c.id, c]));
-          const reordered = orderedIds
-            .map((id) => candidateMap.get(id))
-            .filter((c): c is Candidate => c !== undefined);
-          // Add any candidates not in orderedIds at the end
-          const remaining = state.candidates.filter((c) => !orderedIds.includes(c.id));
-          return { candidates: [...reordered, ...remaining] };
+          const candidateMap = new Map(state.candidates.map(c => [c.id, c]));
+          const newCandidates = orderedIds
+            .map(id => candidateMap.get(id))
+            .filter((c): c is Candidate => !!c);
+
+          // Append any candidates that weren't in the ordered list (safety check)
+          state.candidates.forEach(c => {
+            if (!newCandidates.find(nc => nc.id === c.id)) {
+              newCandidates.push(c);
+            }
+          });
+
+          return { candidates: newCandidates };
         }),
 
-      setEvaluatingAll: (isEvaluatingAll) => set({ isEvaluatingAll }),
+      setSearchStrategy: (strategy) => set({ searchStrategy: strategy, sourcingStrategy: strategy }),
+      setGeneratingStrategy: (value) => set({ isGeneratingStrategy: value }),
+
+      setCurrentJob: (job) => set({ currentJob: job }),
+      updateCurrentJob: (updates) =>
+        set((state) => ({
+          currentJob: state.currentJob ? { ...state.currentJob, ...updates } : null
+        })),
+      setEnhancedIntake: (intake) => set({ enhancedIntake: intake }),
+      setRoleCalibration: (calibration) => set({ roleCalibration: calibration }),
+      setMultiLLMAnalysis: (analysis) => set({ multiLLMAnalysis: analysis }),
+
+      setIsAnalyzing: (isAnalyzing) => set({ isAnalyzing }),
+      setEvaluatingAll: (value) => set({ isEvaluatingAll: value }),
+      setSelectedLLM: (llm) => set({ selectedLLM: llm }),
+      setPhase: (phase) => set({ phase }),
 
       reset: () => set(initialState),
+      resetAll: () => set(initialState),
     }),
     {
-      name: 'recruiter-ai-storage',
+      name: 'project-lotus-storage',
+      storage: createJSONStorage(() => localStorage),
       partialize: (state) => ({
-        phase: state.phase,
+        candidates: state.candidates,
+        searchStrategy: state.searchStrategy,
+        sourcingStrategy: state.sourcingStrategy,
         currentJob: state.currentJob,
         enhancedIntake: state.enhancedIntake,
-        searchStrategy: state.searchStrategy,
-        candidates: state.candidates,
+        roleCalibration: state.roleCalibration,
+        phase: state.phase, // Persist phase too? Maybe.
+        selectedLLM: state.selectedLLM
       }),
     }
   )

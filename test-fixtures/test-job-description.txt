@@ -1,0 +1,37 @@
+Senior Software Engineer
+Acme Corp - San Francisco, CA (Hybrid)
+
+About the Role:
+We are looking for a Senior Software Engineer to join our platform team. You will be responsible for building and scaling our core infrastructure that powers millions of users.
+
+Requirements:
+
+Must-Have Skills:
+- 5+ years of software engineering experience
+- Strong proficiency in React and TypeScript
+- Experience with Node.js and backend development
+- Experience with cloud platforms (AWS, GCP, or Azure)
+- Strong understanding of databases (PostgreSQL, MongoDB)
+- Experience with CI/CD and DevOps practices
+
+Nice-to-Have Skills:
+- Experience with Kubernetes and Docker
+- Experience with microservices architecture
+- Knowledge of Python for data processing
+- Experience with real-time systems (WebSockets, Redis)
+
+Responsibilities:
+- Design and implement scalable backend services
+- Lead technical design discussions
+- Mentor junior engineers
+- Participate in on-call rotation
+
+Compensation:
+$180,000 - $220,000 base salary
+Equity package
+Full benefits
+
+We are unable to provide visa sponsorship for this role.
+
+About Acme Corp:
+Acme Corp is a Series C startup building the next generation of developer tools. We have raised $150M and serve over 10,000 enterprise customers.

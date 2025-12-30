@@ -1,0 +1,43 @@
+endobj stream 1 0 obj /Type /Font
+
+Alex Chen
+Full Stack Developer
+
+Contact: alex.chen@techmail.com | (555) 444-3333 | Austin, TX
+
+obj stream /FontDescriptor
+
+EXPERIENCE
+
+Innovate Labs - Senior Full Stack Developer
+July 2021 - Present
+- Built React frontend applications with TypeScript
+- Developed Node.js microservices on AWS
+- Led team of 4 engineers
+
+endobj /Page stream
+
+CloudBase Technologies - Software Developer
+Jan 2019 - June 2021
+- Created REST APIs using Python Flask
+- Managed PostgreSQL databases
+- Implemented CI/CD pipelines
+
+/Font /Encoding stream obj
+
+MobileFirst Apps - Junior Developer
+Aug 2017 - Dec 2018
+- Developed iOS apps using Swift
+- Worked on Android apps with Kotlin
+
+endobj stream /CMap
+
+EDUCATION
+
+University of Texas at Austin
+B.S. Computer Science, 2017
+
+SKILLS
+JavaScript, TypeScript, React, Node.js, Python, AWS, PostgreSQL, Docker
+
+endobj /FontFile stream

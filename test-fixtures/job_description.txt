@@ -1,0 +1,18 @@
+Job Title: Senior Software Engineer
+Company: Amazon
+Location: Seattle, WA
+
+Responsibilities:
+- Design and build scalable systems using TypeScript and React.
+- Collaborate with cross-functional teams to deliver high-quality software.
+- Mentor junior engineers and drive technical excellence.
+
+Requirements:
+- 5+ years of experience in software development.
+- Strong proficiency in TypeScript, React, and Node.js.
+- Experience with AWS services (Lambda, DynamoDB, S3).
+- Excellent problem-solving and communication skills.
+
+Nice to Have:
+- Experience with AI/LLM integration.
+- Knowledge of Tailwind CSS and Framer Motion.

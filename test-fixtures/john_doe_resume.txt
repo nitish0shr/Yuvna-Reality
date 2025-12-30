@@ -1,0 +1,7 @@
+Name: John Doe
+Email: john.doe@example.com
+Current Title: Senior Software Engineer
+Current Company: Amazon
+
+Employment:
+Jan 2020 – Dec 2024: Senior Software Engineer, Amazon
