@@ -91,11 +91,23 @@ A complete real estate advisory platform that guides property buyers through the
 6. **Agent Handoff** → Seamless transition
 
 ### 👔 Agent Portal (Separate Login)
-1. **Inbox** → All conversations
-2. **Pipeline** → Deal stages (Kanban)
-3. **Leads** → Full lead database
+1. **Inbox** → All conversations with **working Phone/Email/Calendar buttons**
+2. **Pipeline** → **Drag-and-drop** Kanban board to move deals between stages
+3. **Leads** → Full database with **CSV Import/Export** functionality
 4. **Outreach Engine** → Campaign management & auto-pilot (AGENT-ONLY)
 5. **Analytics** → Performance metrics
+
+### 🔧 All Buttons Are Functional!
+| Feature | What It Does |
+|---------|--------------|
+| **Phone Button** | Opens phone dialer with `tel:` link |
+| **Email Button** | Opens email client with pre-filled message |
+| **Calendar Button** | Opens Google Calendar to schedule meeting |
+| **WhatsApp Button** | Opens WhatsApp with pre-filled message |
+| **Export CSV** | Downloads all leads as `.csv` file |
+| **Import CSV** | Parses CSV, shows preview, adds to database |
+| **Drag & Drop** | Move pipeline cards between stages |
+| **Add New Deal** | Form to create new deals |
 
 ---
 
@@ -277,10 +289,14 @@ yuvna-realty/
 - [x] Buyer onboarding flow
 - [x] Property recommendations
 - [x] ROI calculator
-- [x] Agent inbox & pipeline
+- [x] Agent inbox with working action buttons
+- [x] Drag-and-drop deal pipeline
+- [x] CSV Import/Export for leads
 - [x] Outreach engine with auto-pilot
 - [x] Lead scoring
-- [x] Multi-channel tracking
+- [x] Multi-channel tracking (Email, WhatsApp, Phone)
+- [x] Separate public pages (About, Services, Properties, Contact)
+- [x] Google Calendar integration for scheduling
 
 ### Coming Soon 🔜
 - [ ] SendGrid email integration
