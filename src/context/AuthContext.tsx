@@ -1,11 +1,13 @@
 import { createContext, useContext, useEffect, useState, ReactNode } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { supabase } from '../lib/supabase';
-import type { AuthUser } from '../lib/auth';
+import { buildAuthUser, type AuthUser } from '../lib/auth';
 
 interface AuthContextType {
   user: AuthUser | null;
   isLoading: boolean;
   signIn: (email: string) => Promise<{ success: boolean; error?: string }>;
+  signInWithPassword: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
   signOut: () => Promise<void>;
 }
 
@@ -16,17 +18,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    const resolveAdminSession = async (session: Session | null) => {
+      if (!session?.user) {
+        setUser(null);
+        return;
+      }
+
+      const authUser = buildAuthUser(session.user);
+      if (!authUser.isAdmin) {
+        await supabase.auth.signOut();
+        setUser(null);
+        return;
+      }
+
+      setUser(authUser);
+    };
+
     // Check initial session
     const checkSession = async () => {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        if (session?.user) {
-          setUser({
-            id: session.user.id,
-            email: session.user.email!,
-            isAgent: session.user.user_metadata?.isAgent || false,
-          });
-        }
+        await resolveAdminSession(session);
       } catch (error) {
         console.error('Auth check error:', error);
       } finally {
@@ -38,16 +50,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     // Listen for auth changes
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session?.user) {
-        setUser({
-          id: session.user.id,
-          email: session.user.email!,
-          isAgent: session.user.user_metadata?.isAgent || false,
-        });
-      } else {
-        setUser(null);
-      }
-      setIsLoading(false);
+      void (async () => {
+        try {
+          await resolveAdminSession(session);
+        } catch (error) {
+          console.error('Auth state change error:', error);
+        } finally {
+          setIsLoading(false);
+        }
+      })();
     });
 
     return () => subscription.unsubscribe();
@@ -74,8 +85,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setUser(null);
   };
 
+  const signInWithPassword = async (email: string, password: string) => {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) throw error;
+
+      const authUser = data.user ? buildAuthUser(data.user) : null;
+
+      if (!authUser?.isAdmin) {
+        await supabase.auth.signOut();
+        setUser(null);
+        return { success: false, error: 'Admin access required.' };
+      }
+
+      setUser(authUser);
+      return { success: true };
+    } catch (error: any) {
+      return { success: false, error: error.message };
+    }
+  };
+
   return (
-    <AuthContext.Provider value={{ user, isLoading, signIn, signOut }}>
+    <AuthContext.Provider value={{ user, isLoading, signIn, signInWithPassword, signOut }}>
       {children}
     </AuthContext.Provider>
   );
@@ -88,4 +123,3 @@ export function useAuth() {
   }
   return context;
 }
-
