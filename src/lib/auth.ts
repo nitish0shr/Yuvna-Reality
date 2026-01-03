@@ -12,9 +12,46 @@ export interface AuthUser {
   isAdmin?: boolean;
 }
 
-export const buildAuthUser = (user: { id: string; email?: string | null; user_metadata?: Record<string, any> }): AuthUser => {
-  const role = user.user_metadata?.role as AuthUser['role'] | undefined;
-  const isAdmin = role === 'admin' || user.user_metadata?.isAdmin === true;
+type AuthMetadata = {
+  role?: string;
+  roles?: string[];
+  isAdmin?: boolean;
+  is_admin?: boolean;
+  admin?: boolean;
+};
+
+const resolveRole = (metadata?: AuthMetadata, fallback?: AuthMetadata): AuthUser['role'] | undefined => {
+  const role = (metadata?.role ?? fallback?.role) as AuthUser['role'] | undefined;
+  if (role) {
+    return role;
+  }
+
+  const roles = metadata?.roles ?? fallback?.roles;
+  if (Array.isArray(roles) && roles.includes('admin')) {
+    return 'admin';
+  }
+
+  return undefined;
+};
+
+const resolveIsAdmin = (metadata?: AuthMetadata, fallback?: AuthMetadata) => {
+  if (metadata?.role === 'admin' || fallback?.role === 'admin') return true;
+  const roles = metadata?.roles ?? fallback?.roles;
+  if (Array.isArray(roles) && roles.includes('admin')) return true;
+  if (metadata?.isAdmin === true || fallback?.isAdmin === true) return true;
+  if (metadata?.is_admin === true || fallback?.is_admin === true) return true;
+  if (metadata?.admin === true || fallback?.admin === true) return true;
+  return false;
+};
+
+export const buildAuthUser = (user: {
+  id: string;
+  email?: string | null;
+  user_metadata?: AuthMetadata;
+  app_metadata?: AuthMetadata;
+}): AuthUser => {
+  const role = resolveRole(user.user_metadata, user.app_metadata);
+  const isAdmin = resolveIsAdmin(user.user_metadata, user.app_metadata);
 
   return {
     id: user.id,
