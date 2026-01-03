@@ -1,5 +1,6 @@
 import { supabase } from './supabase';
 import { db } from './supabase';
+import type { User } from '@supabase/supabase-js';
 import type { BuyerProfile } from '../types/realEstate';
 
 // Authentication helper functions using Supabase Auth
@@ -12,12 +13,13 @@ export interface AuthUser {
   isAdmin?: boolean;
 }
 
-type AuthMetadata = {
+type AuthMetadata = Record<string, unknown> & {
   role?: string;
   roles?: string[];
   isAdmin?: boolean;
   is_admin?: boolean;
   admin?: boolean;
+  isAgent?: boolean;
 };
 
 const resolveRole = (metadata?: AuthMetadata, fallback?: AuthMetadata): AuthUser['role'] | undefined => {
@@ -44,19 +46,16 @@ const resolveIsAdmin = (metadata?: AuthMetadata, fallback?: AuthMetadata) => {
   return false;
 };
 
-export const buildAuthUser = (user: {
-  id: string;
-  email?: string | null;
-  user_metadata?: AuthMetadata;
-  app_metadata?: AuthMetadata;
-}): AuthUser => {
-  const role = resolveRole(user.user_metadata, user.app_metadata);
-  const isAdmin = resolveIsAdmin(user.user_metadata, user.app_metadata);
+export const buildAuthUser = (user: User): AuthUser => {
+  const userMetadata = user.user_metadata as AuthMetadata | undefined;
+  const appMetadata = user.app_metadata as AuthMetadata | undefined;
+  const role = resolveRole(userMetadata, appMetadata);
+  const isAdmin = resolveIsAdmin(userMetadata, appMetadata);
 
   return {
     id: user.id,
     email: user.email ?? '',
-    isAgent: user.user_metadata?.isAgent || user.app_metadata?.isAgent || false,
+    isAgent: userMetadata?.isAgent || appMetadata?.isAgent || false,
     role,
     isAdmin,
   };
